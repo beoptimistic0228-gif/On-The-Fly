@@ -1,0 +1,28 @@
+import 'package:flutter/material.dart';
+
+/// 앱 전역 테마. 따뜻하고 정돈된 톤 — "가볍게 매일 정리한다"는 감각.
+ThemeData buildAppTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF3D5AFE),
+    brightness: Brightness.light,
+  );
+  return ThemeData(
+    colorScheme: scheme,
+    useMaterial3: true,
+    scaffoldBackgroundColor: scheme.surface,
+    appBarTheme: AppBarTheme(
+      backgroundColor: scheme.surface,
+      elevation: 0,
+      centerTitle: false,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    ),
+  );
+}
