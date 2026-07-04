@@ -80,6 +80,18 @@ class RecordingAnalyticsService implements AnalyticsService {
   @override
   void logNotificationOpened() =>
       events.add(const AnalyticsEvent(AnalyticsEvents.notificationOpened));
+
+  @override
+  void logAdShown() =>
+      events.add(const AnalyticsEvent(AnalyticsEvents.adShown));
+
+  @override
+  void logRemoveAdsPurchased() =>
+      events.add(const AnalyticsEvent(AnalyticsEvents.removeAdsPurchased));
+
+  @override
+  void logRemoveAdsRestored() =>
+      events.add(const AnalyticsEvent(AnalyticsEvents.removeAdsRestored));
 }
 
 /// 인메모리 PhotoService — commit 은 모든 예약을 성공 처리.

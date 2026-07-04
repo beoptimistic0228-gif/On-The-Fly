@@ -85,6 +85,24 @@ void main() {
     expect(sent.single.params, isEmpty);
   });
 
+  test('logAdShown → ad_shown, 속성 없음(F-09)', () {
+    service.logAdShown();
+    expect(sent.single.name, AnalyticsEvents.adShown);
+    expect(sent.single.params, isEmpty);
+  });
+
+  test('logRemoveAdsPurchased → remove_ads_purchased, 속성 없음(F-10)', () {
+    service.logRemoveAdsPurchased();
+    expect(sent.single.name, AnalyticsEvents.removeAdsPurchased);
+    expect(sent.single.params, isEmpty);
+  });
+
+  test('logRemoveAdsRestored → remove_ads_restored, 속성 없음(F-10)', () {
+    service.logRemoveAdsRestored();
+    expect(sent.single.name, AnalyticsEvents.removeAdsRestored);
+    expect(sent.single.params, isEmpty);
+  });
+
   test('전송되는 모든 속성 값은 String 또는 num 뿐이다(Firebase 제약)', () {
     service.logAppOpen();
     service.logOnboardingComplete(

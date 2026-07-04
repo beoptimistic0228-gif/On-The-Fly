@@ -108,6 +108,15 @@ class FirebaseAnalyticsService implements AnalyticsService {
 
   @override
   void logNotificationOpened() => _log(AnalyticsEvents.notificationOpened);
+
+  @override
+  void logAdShown() => _log(AnalyticsEvents.adShown);
+
+  @override
+  void logRemoveAdsPurchased() => _log(AnalyticsEvents.removeAdsPurchased);
+
+  @override
+  void logRemoveAdsRestored() => _log(AnalyticsEvents.removeAdsRestored);
 }
 
 /// 내부 전송 sink. 프로덕션은 `FirebaseAnalytics.logEvent`, 테스트는 기록 함수.

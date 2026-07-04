@@ -193,3 +193,63 @@ Android 의 `google-services` gradle 플러그인은 `google-services.json` 이 
 
 크래시는 어느 경우에도 없다(try-catch 보장). 이벤트 이름·속성·발화 시점은 두
 구현이 동일하므로, 백엔드가 바뀌어도 지표 정의는 변하지 않는다.
+
+---
+
+## I. 수익화 (F-09 광고 · F-10 광고 제거 IAP) — feature-builder P1
+
+> 대상: qa-verifier(광고 위치·게이트 불변식), spec-architect(범위), final-auditor(프라이버시).
+> 상태: `flutter analyze` No issues · `flutter test` 38개 통과(신규 12) · `flutter build apk --debug` 성공.
+> 원칙 준수: 서버 없음(SDK/스토어만) · 광고는 완료 화면 통계 "아래" 세션당 1회 · 사진/개인정보 SDK 유출 없음.
+
+### I-1. 형태 선택 근거 (과설계 금지)
+- **광고 = 배너 1개**. 완료 화면 와이어프레임의 광고 자리가 "streak 통계 아래 박스형"이라 인라인 배너 계열이 정확히 대응. 전면(interstitial)은 완료의 성취감을 가로채고, 네이티브는 MVP 에 과함 → 배너 하나만.
+- **IAP = 설정의 구매/복원 2버튼**. 비소모성 1개.
+
+### I-2. 생성/수정 파일
+신규 (lib/core/monetization):
+- `monetization_config.dart` — 광고 유닛 ID·상품 ID·유예일수 단일 출처 + **실 ID 교체 절차 문서**. 지금은 전부 Google 공식 테스트 값.
+- `ad_gate.dart` — **순수 정책** `AdGate.shouldShowCompletionAd()`(첫 정리+7일·미제거·세션당 1회) + `AdSession`(세션 1회 상태).
+- `ad_service.dart` — 추상 `AdService`/`CompletionBanner`(SDK 타입 격리).
+- `admob_ad_service.dart` — `google_mobile_ads` 구현(SDK import 유일 지점). 배너 로드/폐기.
+- `noop_ad_service.dart` — 무동작 폴백(테스트·미지원·초기화 실패).
+- `purchase_service.dart` — 추상 `PurchaseService` + `RemoveAdsProduct`/`StoreStatus`.
+- `in_app_purchase_service.dart` — `in_app_purchase` 구현(SDK import 유일 지점). 권한=로컬 캐시 bool, 구매/복원 스트림 처리.
+- `noop_purchase_service.dart` — 무동작 폴백(로컬 캐시 권한은 유지).
+
+신규 (lib/features):
+- `features/done/completion_ad_slot.dart` — 완료 화면 광고 슬롯 위젯(게이트 판정→로드→표시, 실패 시 빈 위젯).
+- `features/settings/remove_ads_section.dart` — 구매/복원 UI(스토어 미설정 시 우아하게 비활성).
+
+수정:
+- `lib/core/analytics/analytics_service.dart`(+Local/Firebase 구현) — `ad_shown`·`remove_ads_purchased`·`remove_ads_restored` 3개 이벤트 추가(속성 없음, 개인정보 없음).
+- `lib/core/providers.dart` — `adServiceProvider`·`purchaseServiceProvider`(기본 Noop)·`adSessionProvider`·`adsRemovedProvider`(반응형 스트림).
+- `lib/main.dart` — `_initAdService()`/`_initPurchaseService()` 부팅 + override 주입(analytics 와 동일 폴백 패턴).
+- `lib/app/settings_store.dart` — `firstSortDate` get + `recordFirstSortDateIfAbsent()`(광고 게이트 기준).
+- `lib/features/done/done_screen.dart` — 첫 정리일 기록(successCount>0) + `CompletionAdSlot` 배치(streak 아래).
+- `lib/features/settings/settings_screen.dart` — `RemoveAdsSection` 추가.
+- `android/.../AndroidManifest.xml` · `ios/Runner/Info.plist` — AdMob App ID meta-data(테스트 값, 없으면 SDK 크래시).
+- `pubspec.yaml` — `google_mobile_ads: ^9.0.0`(6.0.0 은 Gradle 9 에서 `configurations.all` 로 빌드 실패 → 9.0.0 으로 상향), `in_app_purchase: ^3.2.0`.
+
+신규 테스트: `test/ad_gate_test.dart`(게이트 6케이스), `test/purchase_service_test.dart`(폴백 3케이스), `firebase_analytics_service_test.dart`(신규 이벤트 3매핑 추가).
+
+### I-3. 광고 게이트 로직 (불변식)
+`AdGate.shouldShowCompletionAd(firstSortDate, now, adsRemoved, shownThisSession)` — 전부 AND:
+1. `!adsRemoved` (F-10 구매 시 영구 억제)
+2. `firstSortDate != null` (첫 정리 전 억제)
+3. `now >= firstSortDate + 7일` (D3: 설치일 아님, **첫 정리일** 기준)
+4. `!shownThisSession` (세션당 1회)
+- **위치 불변식은 구조로 보장**: 이 함수는 `completion_ad_slot.dart` = 완료 화면에서만 호출. 정리 화면(sort_*)은 이 위젯/함수를 전혀 참조하지 않음 → "정리 흐름 중 삽입" 원천 불가.
+- **첫 정리일 기록**: `done_screen` 진입(commit 성공분>0) 시 `recordFirstSortDateIfAbsent`. SharedPreferences 캐시가 동기 반영되므로 첫 정리 당일엔 항상 게이트 false(광고 없음).
+- **로드 실패/미지원/미초기화**: 빈 위젯 → 완료 화면은 광고 없이 정상. 광고가 UX 인질 안 됨.
+
+### I-4. 실 계정/스토어 등록 시 사용자가 할 일 (체크리스트)
+1. **AdMob 앱 등록** → 발급 App ID 로 교체:
+   - `android/app/src/main/AndroidManifest.xml` 의 `com.google.android.gms.ads.APPLICATION_ID`
+   - `ios/Runner/Info.plist` 의 `GADApplicationIdentifier`
+   - (⚠️ 이 값이 없거나 틀리면 SDK 초기화 시 크래시)
+2. **AdMob 배너 광고 유닛** 생성 → `monetization_config.dart` 의 `_realBannerAndroid`/`_realBannerIos` 교체.
+3. `monetization_config.dart` 의 `_useTestAds = false` 로 전환(또는 `kReleaseMode` 분기)해 실 광고 노출.
+4. **스토어 비소모성 상품** 등록: 상품 ID = `remove_ads`(=`MonetizationConfig.removeAdsProductId`). Play Console + App Store Connect 양쪽. 등록 전까지 설정의 광고 제거 버튼은 "준비 중"으로 우아하게 비활성.
+5. iOS: 실 광고 전 `Info.plist` 에 `SKAdNetworkItems`(AdMob 문서 목록) 추가 권장(성과 측정). MVP 빌드엔 불필요.
+6. (선택) 광고 노출/구매 지표는 Firebase 활성화 후 `ad_shown`·`remove_ads_purchased`·`remove_ads_restored` 로 확인.

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/settings_store.dart';
 import '../../core/providers.dart';
 import '../home/home_providers.dart';
 import '../sort/sort_controller.dart';
+import 'completion_ad_slot.dart';
 
 /// 완료(Done, F-09) — 성취 보상 화면. iOS 성취감 보완의 핵심.
 ///
@@ -26,6 +28,13 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
     super.initState();
     // markProcessed 반영 후의 최신 streak.
     _streakFuture = ref.read(processedRepositoryProvider).streakDays();
+
+    // 첫 정리 완료일 기록(광고 게이트 기준, D3). 완료 화면은 commit 성공분이
+    // 있을 때만 진입하므로 여기가 "첫 정리 완료" 시점이다. idempotent —
+    // 최초 1회만 저장되고 이후 정리에선 무시된다.
+    if (widget.outcome.successCount > 0) {
+      ref.read(appSettingsProvider).recordFirstSortDateIfAbsent(DateTime.now());
+    }
   }
 
   @override
@@ -114,9 +123,9 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
                 },
               ),
 
-              // TODO(P1, monetization-and-analytics): 광고 슬롯.
-              // 첫 정리일 +7일(D3)부터 세션당 1회, 이 축하 "뒤"에만 노출.
-              // core 의 shouldShowAd() 정책 함수로 트리거 판정. (지금 구현하지 않음)
+              // 광고 슬롯(F-09) — 축하·streak 통계 "아래"에만. 게이트(첫 정리+7일·
+              // 광고 미제거·세션당 1회) 불통과 시 빈 위젯이라 레이아웃 영향 없음.
+              const CompletionAdSlot(),
 
               const Spacer(),
               FilledButton(

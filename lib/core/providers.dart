@@ -5,6 +5,11 @@ import 'analytics/local_analytics_service.dart';
 import 'db/album_repository.dart';
 import 'db/app_database.dart';
 import 'db/processed_repository.dart';
+import 'monetization/ad_gate.dart';
+import 'monetization/ad_service.dart';
+import 'monetization/noop_ad_service.dart';
+import 'monetization/noop_purchase_service.dart';
+import 'monetization/purchase_service.dart';
 import 'notifications/local_notification_service.dart';
 import 'notifications/notification_service.dart';
 import 'photo/photo_manager_photo_service.dart';
@@ -51,4 +56,27 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
 /// 어느 구현이 주입돼도 무변경.
 final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
   return LocalAnalyticsService();
+});
+
+/// 광고 서비스(F-09). 기본값은 무동작 Noop(테스트·미지원 환경 안전). `main()` 이
+/// 부팅 때 AdMob 초기화에 성공하면 `AdMobAdService` 로 override 주입한다(analytics
+/// 와 동일한 패턴). 완료 화면은 추상 [AdService] 만 의존하므로 무변경.
+final adServiceProvider = Provider<AdService>((ref) {
+  return NoopAdService();
+});
+
+/// 광고 제거 IAP 서비스(F-10). 기본값 Noop, `main()` 이 `InAppPurchaseService` 로
+/// override 주입. 설정 화면은 추상 [PurchaseService] 만 의존.
+final purchaseServiceProvider = Provider<PurchaseService>((ref) {
+  return NoopPurchaseService();
+});
+
+/// 앱 세션 1회 동안의 광고 노출 상태(세션당 1회 불변식). autoDispose 아님 →
+/// 여러 정리 세션을 거쳐도 유지된다.
+final adSessionProvider = Provider<AdSession>((ref) => AdSession());
+
+/// 광고 제거 여부 반응형 스트림(설정 화면 버튼 상태·완료 화면 게이트용).
+/// 구독 즉시 현재값을 1회 방출한다.
+final adsRemovedProvider = StreamProvider<bool>((ref) {
+  return ref.watch(purchaseServiceProvider).adsRemovedStream();
 });

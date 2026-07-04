@@ -54,6 +54,19 @@ abstract class AnalyticsService {
 
   /// 알림 탭으로 앱 진입. SKILL: `notification_opened` — 속성 없음.
   void logNotificationOpened();
+
+  /// 완료 화면 광고 노출(F-09). 세션당 1회 실제 표시 시점. 속성 없음.
+  ///
+  /// SKILL §3 기본 표에는 없지만, 광고 노출 규칙(첫 정리+7일·세션당 1회)이 실제로
+  /// 지켜지는지와 수익화 퍼널을 지표로 확인하려면 노출 이벤트가 필요하다. 광고 내용·
+  /// 개인정보는 담지 않는다(카운트 목적).
+  void logAdShown();
+
+  /// 광고 제거 신규 구매 완료(F-10). 속성 없음(가격·영수증 등 개인정보 제외).
+  void logRemoveAdsPurchased();
+
+  /// 광고 제거 구매 복원 완료(F-10, 재설치·기기변경). 속성 없음.
+  void logRemoveAdsRestored();
 }
 
 /// 이벤트 이름 단일 출처(SKILL §3 표). **오타 방지용 상수** — 절대 콜사이트에서
@@ -66,6 +79,9 @@ abstract final class AnalyticsEvents {
   static const String assetSkipped = 'asset_skipped';
   static const String sortSessionComplete = 'sort_session_complete';
   static const String notificationOpened = 'notification_opened';
+  static const String adShown = 'ad_shown';
+  static const String removeAdsPurchased = 'remove_ads_purchased';
+  static const String removeAdsRestored = 'remove_ads_restored';
 }
 
 /// 이벤트 속성(파라미터) 키 단일 출처.

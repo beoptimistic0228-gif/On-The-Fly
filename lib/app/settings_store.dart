@@ -21,6 +21,7 @@ class AppSettings {
   static const _kNotifyHour = 'notify_hour';
   static const _kNotifyMinute = 'notify_minute';
   static const _kNotifyEnabled = 'notify_enabled';
+  static const _kFirstSortAt = 'first_sort_at_ms';
 
   bool get onboardingCompleted => _prefs.getBool(_kOnboardingDone) ?? false;
 
@@ -42,6 +43,22 @@ class AppSettings {
 
   Future<void> setNotifyEnabled(bool value) =>
       _prefs.setBool(_kNotifyEnabled, value);
+
+  /// 첫 정리 완료일(없으면 null). 광고 노출 게이트 기준(D3: 첫 정리일 + 7일).
+  ///
+  /// **왜 설치일이 아니라 첫 정리일인가:** 습관이 붙기 전 첫 주는 광고 없이 정리
+  /// 경험만 주기 위해서다(00_decisions D3). 설치만 하고 안 쓰는 사용자에겐 애초에
+  /// 광고 기준 자체가 시작되지 않는다.
+  DateTime? get firstSortDate {
+    final ms = _prefs.getInt(_kFirstSortAt);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// 첫 정리 완료일을 아직 없을 때만 기록(idempotent). 완료 화면 진입 시 호출.
+  Future<void> recordFirstSortDateIfAbsent(DateTime when) async {
+    if (_prefs.getInt(_kFirstSortAt) != null) return;
+    await _prefs.setInt(_kFirstSortAt, when.millisecondsSinceEpoch);
+  }
 }
 
 final appSettingsProvider = Provider<AppSettings>(

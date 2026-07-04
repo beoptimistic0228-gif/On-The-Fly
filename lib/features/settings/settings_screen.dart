@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/settings_store.dart';
 import '../../core/providers.dart';
+import 'remove_ads_section.dart';
 
-/// 설정(F-02/F-13 일부) — 알림 시각·토글·프라이버시 안내.
-/// 광고 제거(IAP)는 P1 이라 여기서 구현하지 않음.
+/// 설정(F-02/F-13 일부) — 알림 시각·토글·프라이버시 안내 + 광고 제거(F-10).
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -85,6 +85,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               '이뤄지며, 원본이 외부 서버로 전송되지 않습니다.',
             ),
           ),
+          const RemoveAdsSection(),
           const SizedBox(height: 24),
         ],
       ),

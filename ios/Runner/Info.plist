@@ -4,6 +4,11 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!-- AdMob(google_mobile_ads) App ID. ⚠️ 없으면 SDK 초기화 시 크래시.
+	     지금은 Google 공식 "테스트 App ID"(실 광고 아님). 실 AdMob 앱 등록 후
+	     이 값을 발급받은 App ID 로 교체(monetization_config.dart 참조). -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<!-- ── 사진 라이브러리 접근 (photo_manager) ─────────────────── -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>미분류 사진과 영상을 훑어보고 원하는 앨범으로 정리하기 위해 사진 접근이 필요해요. 사진은 기기 밖으로 전송되지 않아요.</string>

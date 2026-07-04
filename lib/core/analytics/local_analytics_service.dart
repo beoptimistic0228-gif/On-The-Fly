@@ -82,4 +82,13 @@ class LocalAnalyticsService implements AnalyticsService {
 
   @override
   void logNotificationOpened() => _log(AnalyticsEvents.notificationOpened);
+
+  @override
+  void logAdShown() => _log(AnalyticsEvents.adShown);
+
+  @override
+  void logRemoveAdsPurchased() => _log(AnalyticsEvents.removeAdsPurchased);
+
+  @override
+  void logRemoveAdsRestored() => _log(AnalyticsEvents.removeAdsRestored);
 }

@@ -2,6 +2,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/router.dart';
@@ -10,6 +11,12 @@ import 'app/theme.dart';
 import 'core/analytics/analytics_service.dart';
 import 'core/analytics/firebase_analytics_service.dart';
 import 'core/analytics/local_analytics_service.dart';
+import 'core/monetization/admob_ad_service.dart';
+import 'core/monetization/ad_service.dart';
+import 'core/monetization/in_app_purchase_service.dart';
+import 'core/monetization/noop_ad_service.dart';
+import 'core/monetization/noop_purchase_service.dart';
+import 'core/monetization/purchase_service.dart';
 import 'core/providers.dart';
 
 Future<void> main() async {
@@ -21,11 +28,17 @@ Future<void> main() async {
   // 분석 백엔드 결정: Firebase 초기화가 성공하면 Firebase, 실패하면 로컬 폴백.
   final analyticsService = await _initAnalyticsService();
 
+  // 수익화(P1) 서비스 부팅. 실패해도 앱은 정상 동작(광고·결제는 부가 기능).
+  final adService = await _initAdService();
+  final purchaseService = await _initPurchaseService(prefs, analyticsService);
+
   // ProviderScope 를 감싸는 컨테이너(02_integrator_notes D 지침).
   final container = ProviderContainer(
     overrides: [
       sharedPrefsProvider.overrideWithValue(prefs),
       analyticsServiceProvider.overrideWithValue(analyticsService),
+      adServiceProvider.overrideWithValue(adService),
+      purchaseServiceProvider.overrideWithValue(purchaseService),
     ],
   );
 
@@ -67,6 +80,42 @@ Future<AnalyticsService> _initAnalyticsService() async {
     // 설정 파일 부재(가장 흔함) 또는 초기화 실패 → 로컬 폴백. 크래시 금지.
     debugPrint('[analytics] Firebase 초기화 실패 → LocalAnalyticsService 폴백: $e');
     return LocalAnalyticsService();
+  }
+}
+
+/// AdMob(F-09) 초기화. 지원 플랫폼이면 `AdMobAdService`, 실패/미지원이면 Noop.
+///
+/// **왜 폴백인가:** 초기화 크래시(매니페스트 App ID 누락 등)나 미지원 플랫폼에서도
+/// 앱이 죽으면 안 된다. `AdMobAdService.initialize()` 자체가 내부 try-catch 지만,
+/// 여기서도 방어적으로 감싼다. 광고는 완료 화면 뒤 부가물이므로 없으면 그냥 없다.
+Future<AdService> _initAdService() async {
+  try {
+    final service = AdMobAdService();
+    await service.initialize();
+    if (!service.isSupported) return NoopAdService();
+    return service;
+  } catch (e) {
+    debugPrint('[ads] 광고 서비스 초기화 실패 → NoopAdService 폴백: $e');
+    return NoopAdService();
+  }
+}
+
+/// 광고 제거 IAP(F-10) 초기화. 정상이면 `InAppPurchaseService`(구매 스트림 구독),
+/// 초기화 실패 시 로컬 캐시값을 살린 Noop 로 폴백(이미 구매한 사용자 보호).
+Future<PurchaseService> _initPurchaseService(
+  SharedPreferences prefs,
+  AnalyticsService analytics,
+) async {
+  try {
+    final service =
+        InAppPurchaseService(InAppPurchase.instance, prefs, analytics);
+    await service.initialize();
+    return service;
+  } catch (e) {
+    debugPrint('[iap] 결제 서비스 초기화 실패 → NoopPurchaseService 폴백: $e');
+    // 이미 광고 제거를 산 사용자라면 로컬 캐시로 계속 광고를 막아준다.
+    final owned = prefs.getBool('remove_ads_owned') ?? false;
+    return NoopPurchaseService(owned);
   }
 }
 

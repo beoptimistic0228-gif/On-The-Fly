@@ -58,6 +58,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- AdMob(google_mobile_ads) App ID. ⚠️ 이 meta-data 가 없으면 SDK 초기화
+             시 앱이 크래시한다. 지금은 Google 공식 "테스트 App ID"(실 광고 아님).
+             실 AdMob 앱 등록 후 이 value 를 발급받은 App ID 로 교체
+             (동일 값을 lib/core/monetization/monetization_config.dart 에도 문서화). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
