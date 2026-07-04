@@ -46,6 +46,15 @@ class PhotoManagerPhotoService implements PhotoService {
     }
   }
 
+  @override
+  Future<void> openSystemSettings() => PhotoManager.openSetting();
+
+  @override
+  // RequestType.common(사진+영상) = 이 앱이 다루는 미디어 범위와 일치.
+  // photo_manager 내부에서 iOS/Android 채널만 호출하므로 그 외 플랫폼은 no-op(안전).
+  Future<void> presentLimited() =>
+      PhotoManager.presentLimited(type: RequestType.common);
+
   // ── 미분류 큐 ────────────────────────────────────────────────────────
   @override
   Future<List<AssetRef>> loadUnclassifiedQueue() async {

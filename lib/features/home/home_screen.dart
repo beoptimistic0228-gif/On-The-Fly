@@ -8,11 +8,41 @@ import '../onboarding/permission_help.dart';
 import 'home_providers.dart';
 
 /// 홈(F-02): "오늘 미분류 N장" + 정리 시작 + streak. 로딩/빈/정상/에러 상태.
-class HomeScreen extends ConsumerWidget {
+///
+/// C-2: 권한 카드/에러의 "설정에서 전체 접근 허용"은 설정 앱을 여는데, 이 호출은
+/// 즉시 반환하므로 그 자리에서 권한을 재확인할 수 없다. 대신 앱이 다시 활성화될
+/// 때(설정에서 복귀) [homeDataProvider] 를 무효화해 권한·미분류 수를 다시 읽는다.
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 설정 앱에서 권한을 바꾸고 돌아오면(resume) 홈 데이터를 다시 읽어 반영한다.
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(homeDataProvider);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(homeDataProvider);
 
     return Scaffold(
@@ -88,12 +118,21 @@ class _HomeError extends ConsumerWidget {
         FilledButton(
           onPressed: () async {
             if (isPermission) {
-              // 계약에 '설정 앱 열기' 메서드가 없어 권한 재요청으로 대체.
-              await ref.read(photoServiceProvider).ensurePermission();
+              // C-2: 먼저 재요청(Android 재질문 가능 상태는 다이얼로그가 뜸).
+              // 영구 거부라 다이얼로그 없이 그대로면 설정 앱으로 보낸다 —
+              // 복귀(resume) 시 HomeScreen 관찰자가 권한을 재확인한다.
+              // limited 로 바뀐 경우는 설정으로 안 보낸다 — 홈 재로드 후
+              // LimitedAccessCard 가 전체 접근 유도(D2)를 맡는다.
+              final photo = ref.read(photoServiceProvider);
+              final perm = await photo.ensurePermission();
+              if (perm == PhotoPermission.denied) {
+                await photo.openSystemSettings();
+                return;
+              }
             }
             ref.invalidate(homeDataProvider);
           },
-          child: Text(isPermission ? '권한 다시 요청' : '다시 시도'),
+          child: Text(isPermission ? '권한 허용하기' : '다시 시도'),
         ),
       ],
     );

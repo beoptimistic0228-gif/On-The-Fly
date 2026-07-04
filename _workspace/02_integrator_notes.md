@@ -52,6 +52,8 @@ final notificationServiceProvider  = Provider<NotificationService>(...);
 ### B.2 PhotoService (`lib/core/photo/photo_service.dart`)
 ```dart
 Future<PhotoPermission> ensurePermission();           // granted / limited / denied
+Future<void>            openSystemSettings();         // 설정 앱 권한 페이지 열기(C-2·D2 실효 경로)
+Future<void>            presentLimited();             // iOS14+ limited 재선택 시트(현 UI 미노출, 계약만)
 Future<List<AssetRef>>  loadUnclassifiedQueue();      // 미분류 큐 전체(판별=처리ID집합)
 void stageAssignment(AssetRef asset, AlbumRef album); // 예약(즉시 반영 없음)
 void unstageAssignment(String assetId);               // 예약 취소
@@ -147,7 +149,7 @@ Future<void> cancelAll();
 - **[한계 B · Android commit 취소 vs 실패 구분 불가]** `moveAssetsToPath` 반환이 `bool` 이라 사용자 동의창 취소와 이동 실패를 구분할 수 없다. 현재 둘 다 `failed` 로 처리(큐 유지, `cancelled=false`). "전량 취소" 를 UI에서 별도 문구로 안내하려면 실기기에서 취소 시 반환값·예외를 관찰해 보완 필요. (iOS는 동의창이 없어 `cancelled` 항상 false — 정상.)
 - **[한계 C · 알림 로컬 타임존]** `timezone` 의 `tz.local` 은 기본 UTC 라, 실제 기기 로컬 시각과 오프셋만큼 어긋날 수 있다. 정확한 로컬 시각 예약을 위해 `flutter_timezone` 로 기기 타임존명을 얻어 `tz.setLocalLocation()` 설정이 필요(백로그, deps 추가 필요). 현재는 `inexact` 리마인더라 영향이 제한적이나 정시성 요구 시 반드시 보완.
 - **[한계 D · 미분류 큐 성능 프리필터 미적용(설계 편차 — 아키텍트 확인)]** datamodel §3.2/§3.3 의 `createDateTime` 시간 프리필터는 §3.4 엣지케이스(과거 사진 나중 추가 시 프리필터에서 누락)를 유발하므로, MVP는 **전체 스캔 + 처리 ID 대조**로 "미분류 누락 0" 을 우선했다. 결과적으로 §3.3 의사코드의 `createdAfter: since` 를 **의도적으로 적용하지 않음**. 대용량 라이브러리 성능이 문제되면 프리필터를 옵션으로 재도입 가능. → **spec-architect 확인 요망**(계약 자체는 `loadUnclassifiedQueue()` 시그니처·판별기준=ID집합으로 동일하게 유지).
-- **[한계 E · iOS limited]** `ensurePermission()` 이 `limited` 를 반환하면 UI가 전체 접근 유도(D2). 정리 화면 진입 차단·`presentLimited`/설정 딥링크 안내는 **UI(features) 책임**으로 남겨둠(core는 상태만 판별).
+- **[한계 E · iOS limited — C-2로 해소(2026-07-04)]** `ensurePermission()` 이 `limited`/영구 `denied` 면 재호출은 시스템 다이얼로그를 다시 띄우지 않아 "전체 접근 유도" 버튼이 무반응이었다(QA C-2). 계약에 `openSystemSettings()`(설정 앱 열기)·`presentLimited()`(iOS14+ 재선택 시트) 를 추가해 해소. UI 는 limited 카드·denied 재시도에서 `openSystemSettings()` 경로 사용, 설정 복귀(resume) 시 HomeScreen 관찰자가 권한 재확인. `presentLimited()` 는 부분 접근 정리 미지원(D2) 정책상 현재 UI 미노출(계약 완결성·향후 확장용). 실기기에서 설정 딥링크 동작 확인 필요.
 - **[한계 F · 백업복원 후 id 불안정(R3, 기존 감수)]** iOS 백업복원/기기이전, Android 재색인 후 저장된 id 불일치로 일부 재등장 가능. MVP 로컬 전용이라 **감수 + 온보딩 고지**(00_decisions 미결 B). core에서 추가 처리 없음.
 - **[미검증 공통]** photo_manager 실제 호출(권한 팝업, `copyAssetToPath` iOS 태깅, `moveAssetsToPath` Android 동의창), Drift 파일 DB 오픈, 알림 실제 발화는 **정적 분석만 통과**한 상태. 실기기 스모크 테스트 필요.
 

@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
-import '../home/home_providers.dart';
 
 /// 제한(limited) 접근 안내 카드(D2 확정: 전체 접근 유도).
 ///
 /// 부분 접근 정리는 MVP 미지원 → 전체 접근을 요청한다.
-/// PhotoService 계약에 '설정 앱 열기'/'제한 선택 재표시' 메서드가 없어
-/// [PhotoService.ensurePermission] 재호출로 전체 접근을 유도한다(한계: 아래 note).
+///
+/// QA C-2: iOS 에서 이미 limited 면 `ensurePermission` 재호출은 시스템
+/// 다이얼로그를 다시 띄우지 않아 무반응이었다. 이제 [PhotoService.openSystemSettings]
+/// 로 설정 앱을 열어 "모든 사진"을 직접 켜게 한다. 설정에서 돌아오면(resume)
+/// 호스트 화면이 권한을 재확인한다 — home 은 HomeScreen 의 앱 재개 관찰자,
+/// onboarding 은 "다시 시도" 버튼.
 class LimitedAccessCard extends ConsumerWidget {
   const LimitedAccessCard({super.key});
 
@@ -52,11 +55,11 @@ class LimitedAccessCard extends ConsumerWidget {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.tonal(
-              onPressed: () async {
-                await ref.read(photoServiceProvider).ensurePermission();
-                ref.invalidate(homeDataProvider);
-              },
-              child: const Text('전체 접근 허용'),
+              // C-2: 설정 앱을 연다(즉시 반환). 권한 반영은 설정에서 돌아온 뒤
+              // 호스트 화면의 재확인 흐름이 처리한다.
+              onPressed: () =>
+                  ref.read(photoServiceProvider).openSystemSettings(),
+              child: const Text('설정에서 전체 접근 허용'),
             ),
           ),
         ],

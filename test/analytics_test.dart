@@ -101,6 +101,12 @@ class FakePhotoService implements PhotoService {
   Future<PhotoPermission> ensurePermission() async => permission;
 
   @override
+  Future<void> openSystemSettings() async {}
+
+  @override
+  Future<void> presentLimited() async {}
+
+  @override
   Future<List<AssetRef>> loadUnclassifiedQueue() async => queue;
 
   @override
