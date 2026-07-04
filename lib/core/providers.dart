@@ -44,9 +44,11 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
   return LocalNotificationService();
 });
 
-/// 분석 계측 서비스(F-12). 지금은 로컬/Noop 구현(debugPrint·인메모리 기록).
-/// 나중에 FirebaseAnalyticsService 로 교체 시 이 반환만 바꾸면 된다
-/// (features 콜사이트는 추상 타입만 의존하므로 무변경).
+/// 분석 계측 서비스(F-12). 실제 백엔드는 `main()` 이 부팅 때 결정해 override 로
+/// 주입한다: Firebase 초기화 성공 시 `FirebaseAnalyticsService`, 실패(설정 파일
+/// 부재) 시 `LocalAnalyticsService`(폴백). 여기 기본값은 override 되지 않는 환경
+/// (테스트 등)을 위한 로컬 구현이다. features 콜사이트는 추상 타입만 의존하므로
+/// 어느 구현이 주입돼도 무변경.
 final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
   return LocalAnalyticsService();
 });

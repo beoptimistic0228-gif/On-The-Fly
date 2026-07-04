@@ -125,3 +125,71 @@
 ### QA 검증 포인트(분석)
 - 온보딩 완료 시 `onboarding_complete`(알림시각), 정리 진입 시 `sort_session_start`(미분류수), commit 성공 시 `asset_assigned`×성공수 + `sort_session_complete`(처리수·남은수)가 스펠링·속성 정확히 찍히는가. (test/analytics_test.dart 로 자동 검증)
 - **stage 단계에서 asset_assigned 가 찍히지 않는지**(commit 전 0건) — 테스트로 고정.
+
+## H. Firebase Analytics 실연동 (F-12, D3 확정) — 2026-07-04
+
+로컬 계측 계층(G) 위에 **Firebase Analytics 백엔드를 실제로 배선**했다. 단, Firebase
+콘솔 프로젝트가 아직 없어 **설정 파일이 부재**하므로, 지금은 안전하게 로컬로
+폴백하고 설정이 붙는 순간 자동으로 Firebase 전송으로 전환된다(코드 변경 0).
+
+### 신규/수정 파일
+- **신규** `core/analytics/firebase_analytics_service.dart` — `AnalyticsService` 의
+  Firebase 구현. 각 메서드는 `AnalyticsEvents`/`AnalyticsParams` 상수만 사용(문자열
+  직접 타이핑 없음), 단일 지점 `_log` 에서 `unawaited(_fa.logEvent(...))` fire-and-forget.
+  **Firebase 는 속성 값으로 String/num 만 허용**하므로(bool 거부, SDK 런타임 assert)
+  `_coerceForFirebase` 가 bool → int(1/0) 강제(예: `notify_enabled`). 테스트용
+  `withSink` 생성자로 SDK 없이 매핑 검증 가능.
+- **신규** `test/firebase_analytics_service_test.dart` — 7종 이벤트 매핑 + bool→int
+  강제 + "모든 값이 String/num" 불변식 검증(8 테스트, 전부 통과).
+- **수정** `pubspec.yaml` — `firebase_core ^4.11.0`, `firebase_analytics ^12.4.3` 추가.
+- **수정** `main.dart` — 부팅 시 `_initAnalyticsService()`: `Firebase.initializeApp()` 을
+  **try-catch** 로 감싸 성공 시 `FirebaseAnalyticsService`, 실패(설정 부재) 시
+  `LocalAnalyticsService` 폴백. 결과를 `analyticsServiceProvider` override 로 주입
+  (기존 `sharedPrefsProvider` override 패턴과 동일). **features 콜사이트 무변경.**
+- **수정** `core/providers.dart` — `analyticsServiceProvider` 기본값은 그대로
+  `LocalAnalyticsService`(override 안 되는 테스트 환경용), 실제 선택은 main 이 주입.
+
+### 왜 지금 google-services 플러그인을 안 넣었나 (중요)
+Android 의 `google-services` gradle 플러그인은 `google-services.json` 이 있어야
+빌드된다. 파일이 없는데 플러그인을 넣으면 **빌드가 깨진다.** 그래서 플러그인은
+설정 파일이 생긴 뒤에 추가한다. 지금은 `firebase_core`/`firebase_analytics`
+**의존성만** 추가돼 있고, 이것만으로는 Android 빌드가 깨지지 않는다(플러그인이
+없어 `initializeApp()` 이 런타임에 예외 → 로컬 폴백). `flutter build apk --debug`
+로 검증했다.
+
+### Firebase 활성화 절차 (사용자가 나중에 할 일)
+아래를 마치면 **코드 수정 없이** 앱이 자동으로 Firebase 로 전송한다.
+
+1. **Firebase 콘솔에서 프로젝트 생성** — https://console.firebase.google.com → 새
+   프로젝트. Google Analytics(GA4) 연동을 **켠다**(Firebase Analytics 데이터가 GA4
+   속성으로 흐름).
+2. **FlutterFire CLI 로 앱 등록 + 설정 파일 생성**(권장, 가장 쉬움):
+   ```
+   dart pub global activate flutterfire_cli
+   flutterfire configure
+   ```
+   프로젝트를 고르면 자동으로:
+   - `lib/firebase_options.dart` 생성 → main.dart 를 아래처럼 한 줄만 바꾼다:
+     `await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);`
+     (지금은 인자 없는 `initializeApp()` — 설정 파일 기반. options 를 넘기면 더 명시적)
+   - Android `android/app/google-services.json`, iOS `ios/Runner/GoogleService-Info.plist` 배치.
+3. **Android: google-services gradle 플러그인 추가**(설정 파일이 생긴 뒤에만):
+   - `android/settings.gradle`(플러그인 DSL) 의 `plugins { }` 블록에
+     `id "com.google.gms.google-services" version "4.4.2" apply false` 추가.
+   - `android/app/build.gradle` 의 `plugins { }` 블록에
+     `id "com.google.gms.google-services"` 추가.
+   (FlutterFire 최신 버전은 이 gradle 수정도 일부 자동화하지만, 안 되면 수동으로.)
+4. **iOS**: `GoogleService-Info.plist` 를 Xcode 로 Runner 타겟에 추가(폴더 복사만으로는
+   번들에 안 들어갈 수 있음). CocoaPods 는 `flutter build ios` 시 자동 설치.
+5. **검증**: 디버그 실행 후 로그에 `[analytics] Firebase 초기화 성공` 이 뜨는지 확인.
+   Firebase 콘솔 → Analytics → DebugView 에서 `app_open` 등 이벤트 실시간 확인
+   (디버그 이벤트는 `adb shell setprop debug.firebase.analytics.app <패키지명>` 후 보임).
+
+### 현재 폴백 동작 요약
+| 상태 | `Firebase.initializeApp()` | 주입되는 구현 | 이벤트 목적지 |
+|------|------|------|------|
+| 설정 파일 없음(현재) | 예외 발생 → catch | `LocalAnalyticsService` | debugPrint + 인메모리 |
+| 설정 파일 있음(활성화 후) | 성공 | `FirebaseAnalyticsService` | Firebase/GA4 |
+
+크래시는 어느 경우에도 없다(try-catch 보장). 이벤트 이름·속성·발화 시점은 두
+구현이 동일하므로, 백엔드가 바뀌어도 지표 정의는 변하지 않는다.
