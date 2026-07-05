@@ -104,3 +104,19 @@
 3. **[platform-integrator · MEDIUM]** C-4: Android 동의창 취소를 `cancelled=true` 로 구분(실기기에서 `moveAssetsToPath` 취소 반환 관찰 후). UI 오안내 제거.
 
 > 상충/출처 병기: I-1 는 정적 추론(실행 미검증)이며 Riverpod 프로바이더 수명 기준. C-2/C-4 는 builder(§C-2/§C-4)·integrator(한계 B/E) 양측 보고와 일치 — 코드로 재확인 완료.
+
+---
+
+## 6. 실기기 스모크 발견 (2026-07-06, 삼성 S22 Ultra SM-S908N · Android 15 · 16k장)
+
+첫 실기기 commit 흐름(배정→동의→이동) 관찰 결과. 파일시스템·MediaStore 직접 대조로 검증.
+
+### 해소/검증된 것
+- **[해소] S-1. 정리 화면 백지화** — 테마 FilledButton `Size.fromHeight(56)`(무한 최소너비)이 Row 컨텍스트에서 레이아웃 예외 유발. 테마 `Size(64,56)` + 풀너비 옵트인 9곳으로 수정(`305984a`). Impeller/16k장은 무관.
+- **[검증] 핵심 실반영** — 배정 커밋 후 `/sdcard/Pictures/<앨범>/` 파일 실이동 + MediaStore `relative_path` 정상 갱신 확인(adb 대조). **id 재발급 실관찰**(신규 _id 47~59) → FIX-2b 매칭이 실기기에서 성공 동작, 중복방지(재진입 시 미노출)도 확인.
+- **[해소] S-3. 홈 카운트 무갱신처럼 보임** — 재스캔(수십 초) 동안 이전 값 무표시 노출(Riverpod skipLoadingOnRefresh). 홈 상단 LinearProgressIndicator 로 갱신 중 표시.
+- **[해소] S-4. 온보딩 알림 확인 후 무반응** — 16k 스캔을 기다린 후 스텝 전환하던 것을 즉시 전환 + "세는 중" 스피너로 수정(`305984a`).
+
+### 신규 오픈 이슈
+- **[MEDIUM] C-5. 동의창이 앨범(폴더 그룹)당 1회씩 연발** — 현 구현은 `moveAssetsToPath` 를 앨범 그룹별 호출 → 앨범 N개 배정 시 시스템 동의창 N회. 소유자 실사용 소감: "대량 정리 시 UX 치명적". 개선 방향: **전체 pending 자산의 쓰기 권한을 단일 batch write request 로 선획득** 후 앨범별 이동을 무동의 진행. photo_manager 가 raw `createWriteRequest` 를 노출하는지 조사 필요(미노출 시 플랫폼 채널 검토) — platform-integrator 배정.
+- **[INFO] S-2. 삼성 갤러리 앱에서 새 앨범 미표시(관찰)** — 파일·MediaStore 는 정상이므로 앱 결함 아님. 갤러리 자체 캐시/동기화 지연 추정. 갤러리 재실행 후 재확인 대기. 재현 시 "갤러리 반영은 수 분 걸릴 수 있음" 안내 문구 검토(완료 화면).

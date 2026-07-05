@@ -58,10 +58,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(homeDataProvider),
-        child: async.when(
-          loading: () => const _HomeLoading(),
-          error: (err, _) => _HomeError(error: err),
-          data: (data) => _HomeBody(data: data),
+        child: Stack(
+          children: [
+            async.when(
+              loading: () => const _HomeLoading(),
+              error: (err, _) => _HomeError(error: err),
+              data: (data) => _HomeBody(data: data),
+            ),
+            // 정리 완료/설정 복귀 후 재스캔은 대용량 라이브러리(수만 장)에서
+            // 수십 초 걸리는데, when 은 그동안 이전 값을 그대로 보여준다
+            // (skipLoadingOnRefresh). 갱신 중임을 상단 바로 알린다
+            // (2026-07-06 실기기 스모크: 카운트가 안 바뀌는 것처럼 보임).
+            if (async.isRefreshing)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: LinearProgressIndicator(minHeight: 3),
+              ),
+          ],
         ),
       ),
     );
