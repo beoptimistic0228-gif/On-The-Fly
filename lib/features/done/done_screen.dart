@@ -128,13 +128,17 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
               const CompletionAdSlot(),
 
               const Spacer(),
-              FilledButton(
-                onPressed: () {
-                  // 홈 카운트/streak 갱신 후 이동.
-                  ref.invalidate(homeDataProvider);
-                  context.go('/home');
-                },
-                child: const Text('홈으로'),
+              // 풀너비 CTA 는 SizedBox 옵트인(테마 minimumSize 무한 너비 금지).
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    // 홈 카운트/streak 갱신 후 이동.
+                    ref.invalidate(homeDataProvider);
+                    context.go('/home');
+                  },
+                  child: const Text('홈으로'),
+                ),
               ),
             ],
           ),

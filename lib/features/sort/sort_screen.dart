@@ -348,7 +348,10 @@ class _DeniedView extends StatelessWidget {
           const Text('설정에서 사진 접근을 허용한 뒤 다시 시도해 주세요.',
               textAlign: TextAlign.center),
           const SizedBox(height: 24),
-          FilledButton(onPressed: onBack, child: const Text('홈으로')),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(onPressed: onBack, child: const Text('홈으로')),
+          ),
         ],
       ),
     );
@@ -370,7 +373,10 @@ class _ErrorView extends StatelessWidget {
           const SizedBox(height: 16),
           const Text('사진을 불러오지 못했어요', textAlign: TextAlign.center),
           const SizedBox(height: 24),
-          FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+          ),
         ],
       ),
     );

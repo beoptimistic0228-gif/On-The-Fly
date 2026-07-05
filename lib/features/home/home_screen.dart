@@ -115,7 +115,10 @@ class _HomeError extends ConsumerWidget {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
-        FilledButton(
+        // 풀너비 CTA 는 SizedBox 옵트인(테마 minimumSize 무한 너비 금지, theme.dart).
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
           onPressed: () async {
             if (isPermission) {
               // C-2: 먼저 재요청(Android 재질문 가능 상태는 다이얼로그가 뜸).
@@ -133,6 +136,7 @@ class _HomeError extends ConsumerWidget {
             ref.invalidate(homeDataProvider);
           },
           child: Text(isPermission ? '권한 허용하기' : '다시 시도'),
+          ),
         ),
       ],
     );

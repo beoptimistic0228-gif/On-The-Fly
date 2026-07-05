@@ -25,9 +25,12 @@ void showVideoPreview(BuildContext context, String assetId) {
             ),
           ),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('닫기'),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('닫기'),
+            ),
           ),
         ],
       ),

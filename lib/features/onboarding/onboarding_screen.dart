@@ -28,6 +28,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   TimeOfDay _notifTime = const TimeOfDay(hour: 21, minute: 0);
 
   int? _unclassifiedCount;
+  bool _countLoading = false;
 
   @override
   void dispose() {
@@ -79,11 +80,27 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       await ref.read(notificationServiceProvider).scheduleDaily(_notifTime);
       await settings.setNotifyEnabled(true);
     }
-    // 미분류 개수 미리 로드해 마지막 스텝에 노출.
-    final queue = await ref.read(photoServiceProvider).loadUnclassifiedQueue();
     if (!mounted) return;
-    setState(() => _unclassifiedCount = queue.length);
+    // 대용량 라이브러리(수만 장)는 스캔이 수십 초 걸린다 — 스캔을 기다리지 않고
+    // 즉시 다음 스텝으로 넘어가고, 개수는 뒤에서 세며 스텝 4가 로딩을 표시한다
+    // (2026-07-06 실기기 스모크: 여기서 대기하면 앱이 멈춘 것처럼 보임).
     _goTo(3);
+    _loadUnclassifiedCount();
+  }
+
+  /// 미분류 개수 백그라운드 로드(스텝 4 노출용). 실패해도 온보딩은 계속
+  /// 진행 가능해야 하므로 조용히 무시한다(정리 화면이 자체 재시도).
+  Future<void> _loadUnclassifiedCount() async {
+    setState(() => _countLoading = true);
+    try {
+      final queue = await ref.read(photoServiceProvider).loadUnclassifiedQueue();
+      if (!mounted) return;
+      setState(() => _unclassifiedCount = queue.length);
+    } catch (_) {
+      // 개수 미상 → 스텝 4는 "준비됐어요!" 폴백 문구를 쓴다.
+    } finally {
+      if (mounted) setState(() => _countLoading = false);
+    }
   }
 
   Future<void> _finishToSort() async {
@@ -163,7 +180,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
         ),
         const Spacer(),
-        FilledButton(onPressed: () => _goTo(1), child: const Text('시작하기')),
+        // 풀너비 CTA 는 SizedBox 옵트인(테마 minimumSize 무한 너비 금지, theme.dart).
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+              onPressed: () => _goTo(1), child: const Text('시작하기')),
+        ),
       ],
     );
   }
@@ -202,14 +224,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ),
           ),
         const Spacer(),
-        FilledButton(
-          onPressed: _requestingPhoto ? null : _requestPhoto,
-          child: _requestingPhoto
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(perm == null ? '사진 접근 허용' : '다시 시도'),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _requestingPhoto ? null : _requestPhoto,
+            child: _requestingPhoto
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(perm == null ? '사진 접근 허용' : '다시 시도'),
+          ),
         ),
         if (perm == PhotoPermission.limited || perm == PhotoPermission.granted)
           TextButton(
@@ -255,9 +280,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           onTap: _pickTime,
         ),
         const Spacer(),
-        FilledButton(
-          onPressed: _confirmNotifAndNext,
-          child: const Text('다음'),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _confirmNotifAndNext,
+            child: const Text('다음'),
+          ),
         ),
         TextButton(
           onPressed: _confirmNotifAndNext,
@@ -276,22 +304,42 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const Spacer(),
         Icon(Icons.swipe, size: 88, color: theme.colorScheme.primary),
         const SizedBox(height: 24),
-        Text(
-          count == null
-              ? '준비됐어요!'
-              : count == 0
-                  ? '지금은 미분류 사진이 없어요'
-                  : '오늘 미분류 $count장이 있어요',
-          style: theme.textTheme.titleLarge,
-          textAlign: TextAlign.center,
-        ),
+        // 개수 스캔 중(대용량 라이브러리는 수십 초)에는 멈춘 게 아니라
+        // 세는 중임을 명시한다 — 홈 로딩 문구와 동일 톤.
+        if (_countLoading) ...[
+          const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '미분류 사진을 세는 중...',
+            style: theme.textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
+        ] else
+          Text(
+            count == null
+                ? '준비됐어요!'
+                : count == 0
+                    ? '지금은 미분류 사진이 없어요'
+                    : '오늘 미분류 $count장이 있어요',
+            style: theme.textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
         const SizedBox(height: 12),
         const Text('스와이프 한 번으로 앨범에 배정해 보세요.',
             textAlign: TextAlign.center),
         const Spacer(),
-        FilledButton(
-          onPressed: _finishToSort,
-          child: const Text('지금 첫 정리 시작'),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _finishToSort,
+            child: const Text('지금 첫 정리 시작'),
+          ),
         ),
       ],
     );

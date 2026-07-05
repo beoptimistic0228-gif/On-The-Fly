@@ -17,7 +17,11 @@ ThemeData buildAppTheme() {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(56),
+        // ⚠️ Size.fromHeight(56) = 최소 너비 무한대 금지. Row/ListTile trailing 등
+        // 가로 무한 컨텍스트에서 레이아웃 예외 → 화면 전체가 하얗게 죽는다
+        // (2026-07-06 S22 실기기: 정리 화면 배너의 커밋 버튼에서 확인).
+        // 풀너비 CTA 는 콜사이트에서 SizedBox(width: double.infinity)로 옵트인.
+        minimumSize: const Size(64, 56),
         textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
