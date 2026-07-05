@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "254637976198",
+    "project_id": "on-the-fly-bcdf8",
+    "storage_bucket": "on-the-fly-bcdf8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:254637976198:android:ec7c3b22e46cab71663f07",
+        "android_client_info": {
+          "package_name": "com.geuttaeguttae.on_the_fly"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfpOdKfV5OlBK_N_03ySUOZy9FLCNWKwU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

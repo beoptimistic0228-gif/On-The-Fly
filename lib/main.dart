@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/router.dart';
 import 'app/settings_store.dart';
 import 'app/theme.dart';
+import 'firebase_options.dart';
 import 'core/analytics/analytics_service.dart';
 import 'core/analytics/firebase_analytics_service.dart';
 import 'core/analytics/local_analytics_service.dart';
@@ -65,15 +66,17 @@ Future<void> main() async {
 
 /// Firebase 초기화를 시도하고 결과에 맞는 [AnalyticsService] 를 만든다.
 ///
-/// **왜 try-catch 폴백인가:** Firebase 콘솔 프로젝트/설정 파일
-/// (`google-services.json`·`GoogleService-Info.plist`·`firebase_options.dart`)이
-/// 아직 없으므로 `Firebase.initializeApp()` 은 설정을 못 찾아 예외를 던진다. 이때
-/// 앱이 크래시하면 안 되므로(설정은 나중에 붙인다, 02_builder_notes "Firebase
-/// 활성화 절차") 실패 시 조용히 [LocalAnalyticsService] 로 폴백한다. 설정이 붙어
-/// 초기화가 성공하는 순간부터는 코드 변경 없이 자동으로 Firebase 로 전송된다.
+/// **왜 try-catch 폴백인가:** `flutterfire configure` 로 설정 파일
+/// (`firebase_options.dart`·`google-services.json`·`GoogleService-Info.plist`)이
+/// 배선됐으므로 정상 경우 초기화가 성공해 Firebase 로 전송한다. 다만 설정이
+/// 누락/손상된 환경(예: iOS plist 미배치, 오프라인 최초 실행)에서도 앱이
+/// 크래시하면 안 되므로(02_builder_notes "Firebase 활성화 절차") 실패 시 조용히
+/// [LocalAnalyticsService] 로 폴백한다.
 Future<AnalyticsService> _initAnalyticsService() async {
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     debugPrint('[analytics] Firebase 초기화 성공 → FirebaseAnalyticsService 사용');
     return FirebaseAnalyticsService(FirebaseAnalytics.instance);
   } catch (e) {
