@@ -51,6 +51,10 @@ class _FakePhotoService implements PhotoService {
 
   // load() 가 쓰지 않는 나머지는 미사용.
   @override
+  bool get supportsDeletion => false;
+  @override
+  Future<bool> deleteAsset(AssetRef asset) => throw UnimplementedError();
+  @override
   void stageAssignment(AssetRef asset, AlbumRef album) =>
       throw UnimplementedError();
   @override

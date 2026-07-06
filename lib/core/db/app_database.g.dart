@@ -711,6 +711,203 @@ class ProcessedAssetsCompanion extends UpdateCompanion<ProcessedAsset> {
   }
 }
 
+class $DeletionLogsTable extends DeletionLogs
+    with TableInfo<$DeletionLogsTable, DeletionLog> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeletionLogsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, deletedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deletion_logs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeletionLog> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deletedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeletionLog map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeletionLog(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DeletionLogsTable createAlias(String alias) {
+    return $DeletionLogsTable(attachedDatabase, alias);
+  }
+}
+
+class DeletionLog extends DataClass implements Insertable<DeletionLog> {
+  /// 서러게이트 PK(자산 id 아님).
+  final int id;
+
+  /// 삭제 성공 시각(로컬). streak 연속일 계산의 날짜 원천.
+  final DateTime deletedAt;
+  const DeletionLog({required this.id, required this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  DeletionLogsCompanion toCompanion(bool nullToAbsent) {
+    return DeletionLogsCompanion(id: Value(id), deletedAt: Value(deletedAt));
+  }
+
+  factory DeletionLog.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeletionLog(
+      id: serializer.fromJson<int>(json['id']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  DeletionLog copyWith({int? id, DateTime? deletedAt}) =>
+      DeletionLog(id: id ?? this.id, deletedAt: deletedAt ?? this.deletedAt);
+  DeletionLog copyWithCompanion(DeletionLogsCompanion data) {
+    return DeletionLog(
+      id: data.id.present ? data.id.value : this.id,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletionLog(')
+          ..write('id: $id, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeletionLog &&
+          other.id == this.id &&
+          other.deletedAt == this.deletedAt);
+}
+
+class DeletionLogsCompanion extends UpdateCompanion<DeletionLog> {
+  final Value<int> id;
+  final Value<DateTime> deletedAt;
+  const DeletionLogsCompanion({
+    this.id = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  DeletionLogsCompanion.insert({
+    this.id = const Value.absent(),
+    required DateTime deletedAt,
+  }) : deletedAt = Value(deletedAt);
+  static Insertable<DeletionLog> custom({
+    Expression<int>? id,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  DeletionLogsCompanion copyWith({Value<int>? id, Value<DateTime>? deletedAt}) {
+    return DeletionLogsCompanion(
+      id: id ?? this.id,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletionLogsCompanion(')
+          ..write('id: $id, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -718,13 +915,19 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ProcessedAssetsTable processedAssets = $ProcessedAssetsTable(
     this,
   );
+  late final $DeletionLogsTable deletionLogs = $DeletionLogsTable(this);
   late final ProcessedDao processedDao = ProcessedDao(this as AppDatabase);
   late final AlbumDao albumDao = AlbumDao(this as AppDatabase);
+  late final DeletionDao deletionDao = DeletionDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [albums, processedAssets];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    albums,
+    processedAssets,
+    deletionLogs,
+  ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
     WritePropagation(
@@ -1352,6 +1555,134 @@ typedef $$ProcessedAssetsTableProcessedTableManager =
       ProcessedAsset,
       PrefetchHooks Function({bool albumId})
     >;
+typedef $$DeletionLogsTableCreateCompanionBuilder =
+    DeletionLogsCompanion Function({
+      Value<int> id,
+      required DateTime deletedAt,
+    });
+typedef $$DeletionLogsTableUpdateCompanionBuilder =
+    DeletionLogsCompanion Function({Value<int> id, Value<DateTime> deletedAt});
+
+class $$DeletionLogsTableFilterComposer
+    extends Composer<_$AppDatabase, $DeletionLogsTable> {
+  $$DeletionLogsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeletionLogsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DeletionLogsTable> {
+  $$DeletionLogsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeletionLogsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DeletionLogsTable> {
+  $$DeletionLogsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$DeletionLogsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DeletionLogsTable,
+          DeletionLog,
+          $$DeletionLogsTableFilterComposer,
+          $$DeletionLogsTableOrderingComposer,
+          $$DeletionLogsTableAnnotationComposer,
+          $$DeletionLogsTableCreateCompanionBuilder,
+          $$DeletionLogsTableUpdateCompanionBuilder,
+          (
+            DeletionLog,
+            BaseReferences<_$AppDatabase, $DeletionLogsTable, DeletionLog>,
+          ),
+          DeletionLog,
+          PrefetchHooks Function()
+        > {
+  $$DeletionLogsTableTableManager(_$AppDatabase db, $DeletionLogsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeletionLogsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeletionLogsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeletionLogsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+              }) => DeletionLogsCompanion(id: id, deletedAt: deletedAt),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required DateTime deletedAt,
+              }) => DeletionLogsCompanion.insert(id: id, deletedAt: deletedAt),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeletionLogsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DeletionLogsTable,
+      DeletionLog,
+      $$DeletionLogsTableFilterComposer,
+      $$DeletionLogsTableOrderingComposer,
+      $$DeletionLogsTableAnnotationComposer,
+      $$DeletionLogsTableCreateCompanionBuilder,
+      $$DeletionLogsTableUpdateCompanionBuilder,
+      (
+        DeletionLog,
+        BaseReferences<_$AppDatabase, $DeletionLogsTable, DeletionLog>,
+      ),
+      DeletionLog,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1360,4 +1691,6 @@ class $AppDatabaseManager {
       $$AlbumsTableTableManager(_db, _db.albums);
   $$ProcessedAssetsTableTableManager get processedAssets =>
       $$ProcessedAssetsTableTableManager(_db, _db.processedAssets);
+  $$DeletionLogsTableTableManager get deletionLogs =>
+      $$DeletionLogsTableTableManager(_db, _db.deletionLogs);
 }

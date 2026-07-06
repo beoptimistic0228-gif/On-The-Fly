@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'dao/album_dao.dart';
+import 'dao/deletion_dao.dart';
 import 'dao/processed_dao.dart';
 
 part 'app_database.g.dart';
@@ -35,6 +36,21 @@ class ProcessedAssets extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// 삭제 활동 기록 — streak 산정 전용(D5-4, 설계 §0.3 / §9.2).
+///
+/// **자산 id·내용을 저장하지 않는다(프라이버시).** 삭제 성공 1건당 삭제 시각만
+/// 1행 append 한다. 영구삭제(Android)/최근삭제됨(iOS)으로 자산이 이미 큐에서
+/// 사라지므로 중복방지·undo 목적의 id 저장이 불필요하다. 용도는 오직 streak:
+/// "그 날 정리 활동이 있었는가"(처리일 ∪ 삭제일)의 삭제일 원천이다.
+@DataClassName('DeletionLog')
+class DeletionLogs extends Table {
+  /// 서러게이트 PK(자산 id 아님).
+  IntColumn get id => integer().autoIncrement()();
+
+  /// 삭제 성공 시각(로컬). streak 연속일 계산의 날짜 원천.
+  DateTimeColumn get deletedAt => dateTime()();
+}
+
 /// 로컬 앨범 참조/캐시(datamodel §2.2).
 @DataClassName('Album')
 class Albums extends Table {
@@ -60,8 +76,8 @@ class Albums extends Table {
 
 /// 앱 로컬 DB(Drift/SQLite, D3 확정).
 @DriftDatabase(
-  tables: [ProcessedAssets, Albums],
-  daos: [ProcessedDao, AlbumDao],
+  tables: [ProcessedAssets, Albums, DeletionLogs],
+  daos: [ProcessedDao, AlbumDao, DeletionDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -70,11 +86,18 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  // v2(2026-07-07): DeletionLogs 추가(D5 삭제 streak). ProcessedAssets/Albums 무변경.
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v1 → v2: DeletionLogs 신규 테이블만 추가(기존 테이블·데이터 무변경).
+          if (from < 2) {
+            await m.createTable(deletionLogs);
+          }
+        },
         beforeOpen: (details) async {
           // FK(ProcessedAsset → Album) 강제.
           await customStatement('PRAGMA foreign_keys = ON');

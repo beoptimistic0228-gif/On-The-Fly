@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -19,15 +20,28 @@ import 'photo_service.dart';
 /// 플랫폼 차이(iOS 태깅 / Android 배치 이동·동의창 / id 재발급)를 이 안에 가둔다.
 /// features 는 [PhotoService] 추상 타입만 본다.
 class PhotoManagerPhotoService implements PhotoService {
-  PhotoManagerPhotoService(this._processedRepo, this._albumRepo);
+  PhotoManagerPhotoService(this._processedRepo, this._albumRepo) {
+    // supportsDeletion 은 UI 가 **동기** 조회하는데 Android 지원 판정엔 SDK_INT
+    // (플랫폼 채널·비동기)가 필요하다. onboarding→home→정리 화면에 도달하기 훨씬
+    // 전에 미리(백그라운드) 캐시해 둔다. 실패해도 무해(기본값 = 미지원 → 버튼 숨김).
+    // ensurePermission 에서도 await 로 한 번 더 보장한다(온보딩 게이트).
+    if (Platform.isAndroid) {
+      unawaited(_ensureAndroidSdkInt());
+    }
+  }
 
   final ProcessedRepository _processedRepo;
   final AlbumRepository _albumRepo;
 
   /// 네이티브 배치 이동 채널(Android C-5/C-4). 전체 pending 을 단일 쓰기 동의로 이동.
   /// android/app .../MediaMoveHandler.kt 와 짝. iOS/데스크톱에선 사용하지 않는다.
+  /// D5: 여기에 `sdkInt`(삭제 지원 판정용) 초경량 메서드를 추가로 얹었다.
   static const MethodChannel _mediaChannel =
       MethodChannel('on_the_fly/media_store');
+
+  /// Android SDK_INT 캐시(삭제 지원 판정용, D5-5). null = 미조회. 플랫폼 채널로
+  /// 1회 조회 후 보관한다. iOS/데스크톱에선 사용하지 않는다.
+  int? _androidSdkInt;
 
   /// stage 예약 큐(메모리). key = assetId → 단일 앨범 배정(다중 배정 없음).
   /// insertion order 유지(Dart Map) → "대기 중" 순서 표시에 사용.
@@ -43,6 +57,10 @@ class PhotoManagerPhotoService implements PhotoService {
   // ── 권한 ─────────────────────────────────────────────────────────────
   @override
   Future<PhotoPermission> ensurePermission() async {
+    // 온보딩 게이트에서 SDK_INT 를 확정 캐시(정리 화면 도달 전 supportsDeletion 정확).
+    if (Platform.isAndroid) {
+      await _ensureAndroidSdkInt();
+    }
     final PermissionState state = await PhotoManager.requestPermissionExtend();
     switch (state) {
       case PermissionState.authorized:
@@ -182,6 +200,91 @@ class PhotoManagerPhotoService implements PhotoService {
     }
     return result;
   }
+
+  // ── 단건 삭제(D5, 즉시·영구) ─────────────────────────────────────────
+  @override
+  bool get supportsDeletion {
+    // iOS/macOS: PhotoKit deleteAssets 는 항상 지원(시스템 확인창+최근삭제됨).
+    if (Platform.isIOS || Platform.isMacOS) return true;
+    // Android: API 30+ 만. SDK_INT 미조회(null) 상태는 보수적으로 미지원.
+    if (Platform.isAndroid) {
+      final sdk = _androidSdkInt;
+      return sdk != null && sdk >= 30;
+    }
+    return false;
+  }
+
+  @override
+  Future<bool> deleteAsset(AssetRef asset) async {
+    // 2차 방어(UI 버튼 미노출이 1차): 지원 안 되는 플랫폼/구버전은 즉시 false.
+    if (Platform.isAndroid) {
+      final sdk = await _ensureAndroidSdkInt();
+      if (sdk == null || sdk < 30) return false;
+    } else if (!(Platform.isIOS || Platform.isMacOS)) {
+      return false;
+    }
+
+    final List<String> deleted;
+    try {
+      // deleteWithIds → Android(API30+) createDeleteRequest(영구)+동의창 1회 /
+      // iOS deleteAssets(시스템 확인창)+최근삭제됨. 반환 = 실제 삭제된 id 리스트,
+      // 취소·실패면 빈 리스트(§9 Q1·Q4 구분 불가).
+      deleted = await PhotoManager.editor.deleteWithIds(<String>[asset.id]);
+    } catch (_) {
+      return false;
+    }
+    return applyDeletionResult(asset.id, deleted);
+  }
+
+  /// `deleteWithIds` 반환 → 성공 여부 매핑 + 서비스 내부 정리(§0.3).
+  ///
+  /// 플랫폼/채널 없이 단위 테스트 가능하도록 순수 로직으로 분리(deleteAsset 은
+  /// 플랫폼 호출만 담당). 성공(삭제 id 포함) 시:
+  ///  - 혹시 배정 예약(`_pending`)에 있으면 제거 → commit 이 사라진 자산을 이동
+  ///    시도하는 혼선을 원천 차단(정상 흐름상 현재 카드는 pending 에 없지만 방어).
+  ///  - 스캔 캐시 무효화 → 다음 loadUnclassifiedQueue 는 정확 재스캔(§9 Q6, 카운트
+  ///    지문 자가무효화에 더해 명시 무효화로 세션 도중 삭제도 안전).
+  @visibleForTesting
+  bool applyDeletionResult(String assetId, List<String> deletedIds) {
+    final ok = deletedIds.contains(assetId);
+    if (ok) {
+      _pending.remove(assetId);
+      _queueCache = null;
+    }
+    return ok;
+  }
+
+  /// Android SDK_INT 를 플랫폼 채널로 1회 조회·캐시(삭제 지원 판정). 채널 미배선·
+  /// 예외 시 미상(null 유지) → 보수적으로 미지원 취급(삭제 버튼 숨김·삭제 차단).
+  Future<int?> _ensureAndroidSdkInt() async {
+    if (!Platform.isAndroid) return null;
+    final cached = _androidSdkInt;
+    if (cached != null) return cached;
+    try {
+      _androidSdkInt = await _mediaChannel.invokeMethod<int>('sdkInt');
+    } catch (_) {
+      // 미조회 유지(기본 미지원).
+    }
+    return _androidSdkInt;
+  }
+
+  /// 테스트 전용: SDK_INT 캐시 강제 주입(플랫폼 채널 없이 supportsDeletion 검증).
+  @visibleForTesting
+  void debugSetAndroidSdkInt(int? sdk) => _androidSdkInt = sdk;
+
+  /// 테스트 전용: 스캔 캐시 프라임(삭제 시 무효화 검증용).
+  @visibleForTesting
+  void debugPrimeQueueCache(List<AssetRef> queue) {
+    _queueCache = _QueueScanCache(
+      const _ScanSignature(
+          total: 0, processedCount: 0, lastProcessedMicros: null),
+      List<AssetRef>.unmodifiable(queue),
+    );
+  }
+
+  /// 테스트 전용: 스캔 캐시가 살아있는지.
+  @visibleForTesting
+  bool get debugQueueCached => _queueCache != null;
 
   /// iOS/macOS: 앨범 태깅(원본 타임라인 유지). 동의창 없음, id 불변.
   Future<BatchAssignResult> _commitDarwin(

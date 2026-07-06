@@ -4,6 +4,7 @@ import 'analytics/analytics_service.dart';
 import 'analytics/local_analytics_service.dart';
 import 'db/album_repository.dart';
 import 'db/app_database.dart';
+import 'db/deletion_repository.dart';
 import 'db/processed_repository.dart';
 import 'monetization/ad_gate.dart';
 import 'monetization/ad_service.dart';
@@ -26,9 +27,16 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// 처리 기록 리포지토리(중복 방지·streak).
+/// 처리 기록 리포지토리(중복 방지·streak). streak 은 처리일 ∪ 삭제일이라
+/// DeletionDao 도 함께 주입한다(D5-4).
 final processedRepositoryProvider = Provider<ProcessedRepository>((ref) {
-  return DriftProcessedRepository(ref.watch(appDatabaseProvider).processedDao);
+  final db = ref.watch(appDatabaseProvider);
+  return DriftProcessedRepository(db.processedDao, db.deletionDao);
+});
+
+/// 삭제 활동 기록 리포지토리(D5). 정리 컨트롤러가 삭제 성공 시 logDeletion 호출.
+final deletionRepositoryProvider = Provider<DeletionRepository>((ref) {
+  return DriftDeletionRepository(ref.watch(appDatabaseProvider).deletionDao);
 });
 
 /// 앱 관리 앨범 리포지토리.

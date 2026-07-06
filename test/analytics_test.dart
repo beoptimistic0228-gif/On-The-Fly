@@ -153,6 +153,15 @@ class FakePhotoService implements PhotoService {
   }
 
   @override
+  bool get supportsDeletion => true;
+
+  @override
+  Future<bool> deleteAsset(AssetRef asset) async {
+    _pending.remove(asset.id);
+    return true;
+  }
+
+  @override
   Future<AlbumRef> createAlbum(String name) async =>
       AlbumRef(id: 'new', name: name, updatedAt: DateTime(2026));
 

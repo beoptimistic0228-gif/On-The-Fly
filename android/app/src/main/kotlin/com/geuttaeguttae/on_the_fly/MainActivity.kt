@@ -1,6 +1,7 @@
 package com.geuttaeguttae.on_the_fly
 
 import android.content.Intent
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -27,6 +28,8 @@ class MainActivity : FlutterActivity() {
                         val moves = call.argument<List<Map<String, Any?>>>("moves") ?: emptyList()
                         handler.moveToAlbums(moves, result)
                     }
+                    // D5: 삭제 지원 판정용(Android API 30+ 만 노출). 초경량 즉답.
+                    "sdkInt" -> result.success(Build.VERSION.SDK_INT)
                     else -> result.notImplemented()
                 }
             }

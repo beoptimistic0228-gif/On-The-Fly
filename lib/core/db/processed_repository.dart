@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import 'dao/deletion_dao.dart';
 import 'dao/processed_dao.dart';
 
 /// 처리 기록 리포지토리 — architecture §2.2 경계 계약.
@@ -27,11 +30,43 @@ abstract class ProcessedRepository {
   Future<int> countProcessedInRange(DateTime from, DateTime to);
 }
 
+/// 날짜 집합에서 오늘(또는 어제)까지 이어진 연속일 streak 을 계산한다.
+///
+/// 순수 함수(테스트 용이). [dates] 는 임의 시각 목록으로, 여기서 자정 기준
+/// 날짜로 정규화해 집합화한다. 오늘 기록이 없으면 어제부터 이어지는 streak 를
+/// 인정한다(오늘 아직 정리 안 함). 원천은 처리일 ∪ 삭제일 어느 쪽이든 무방.
+@visibleForTesting
+int computeStreak(Iterable<DateTime> dates, {DateTime? now}) {
+  final days = dates
+      .map((d) => DateTime(d.year, d.month, d.day))
+      .toSet();
+  if (days.isEmpty) return 0;
+
+  final ref = now ?? DateTime.now();
+  var cursor = DateTime(ref.year, ref.month, ref.day);
+
+  // 오늘 기록이 없으면 어제부터 이어지는 streak 로 인정(오늘 아직 안 함).
+  if (!days.contains(cursor)) {
+    cursor = cursor.subtract(const Duration(days: 1));
+    if (!days.contains(cursor)) return 0;
+  }
+
+  var streak = 0;
+  while (days.contains(cursor)) {
+    streak++;
+    cursor = cursor.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
 /// Drift 기반 구현(ProcessedDao 래핑).
 class DriftProcessedRepository implements ProcessedRepository {
-  DriftProcessedRepository(this._dao);
+  DriftProcessedRepository(this._dao, this._deletionDao);
 
   final ProcessedDao _dao;
+
+  /// streak 합집합(D5-4)의 "삭제일" 원천. 처리일과 함께 연속일을 계산한다.
+  final DeletionDao _deletionDao;
 
   @override
   Future<Set<String>> processedIdSet() => _dao.processedIdSet();
@@ -61,28 +96,9 @@ class DriftProcessedRepository implements ProcessedRepository {
 
   @override
   Future<int> streakDays() async {
-    final dates = await _dao.allProcessedDates();
-    if (dates.isEmpty) return 0;
-
-    // 날짜(자정 기준) 집합으로 정규화.
-    final days = dates
-        .map((d) => DateTime(d.year, d.month, d.day))
-        .toSet();
-
-    final now = DateTime.now();
-    var cursor = DateTime(now.year, now.month, now.day);
-
-    // 오늘 기록이 없으면 어제부터 이어지는 streak 로 인정(오늘 아직 안 함).
-    if (!days.contains(cursor)) {
-      cursor = cursor.subtract(const Duration(days: 1));
-      if (!days.contains(cursor)) return 0;
-    }
-
-    var streak = 0;
-    while (days.contains(cursor)) {
-      streak++;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
+    // D5-4: streak = 처리일 ∪ 삭제일. 삭제만 한 날도 정리 활동으로 인정한다.
+    final processed = await _dao.allProcessedDates();
+    final deleted = await _deletionDao.allDeletionDates();
+    return computeStreak(<DateTime>[...processed, ...deleted]);
   }
 }

@@ -233,3 +233,47 @@ Future<void> cancelAll();
 7. **폴백**: (가능하면) Android 10 기기에서 `unsupported` 경로가 레거시 이동으로 동작하는지 확인(없으면 미검증으로 기록).
 
 **미해결/한계**: (a) `cr.update(RELATIVE_PATH)` 후 OEM별 id 재발급 실동작은 실기기 필수(한계 A 승계). (b) 채널이 액티비티 없는 상태(백그라운드)에서 호출되면 `no_activity` → 폴백. 실사용상 commit 은 포그라운드라 문제없음. (c) API<30 폴백 경로는 C-4 미해소(bool 반환).
+
+## G. 단건 삭제 core(F-14a') UI 전달사항 (2026-07-07, platform-integrator)
+
+> 대상: feature-builder(F-14b' 컨트롤러 / F-14c' UI). 설계 SSOT = `06_architect_delete.md §0`. UI(lib/features/)는 이 절의 계약에만 의존한다.
+
+### G.1 신규 공개 계약 (PhotoService, `lib/core/photo/photo_service.dart`)
+
+```dart
+// 단건 즉시·영구 삭제(OS 동의창 포함). true=삭제 성공, false=취소 또는 실패(구분 불가).
+Future<bool> deleteAsset(AssetRef asset);
+
+// UI 삭제 버튼 노출 게이트. iOS/macOS=항상 true, Android=API30+만 true, 그 외 false.
+bool get supportsDeletion;
+```
+
+- **반환 의미**: `true` → 자산이 삭제됨(카드 제거·`index++`·`deletedCount++`·`asset_deleted` 이벤트·`DeletionRepository.logDeletion()` 호출). `false` → **취소와 실패를 구분하지 않는다**(둘 다 빈 반환). 카드 유지 + 스낵 "삭제하지 못했어요"(D5-6, §0.1). 재시도는 사용자가 다시 삭제 탭.
+- **동의창**: `deleteAsset` 1회 = OS 동의창 1회(즉시 모델, 배치 아님). 배정 commit 동의창과 별개.
+- **되돌리기 없음**: 삭제는 history에 안 쌓인다. `undo()`는 배정 예약에만 동작(삭제 미적용, §0.2).
+
+### G.2 `supportsDeletion` 사용법 (삭제 버튼 노출 게이트)
+
+- **동기 getter**다. UI는 `ref.read(photoServiceProvider).supportsDeletion` 로 삭제 버튼 노출 여부를 판단(false면 버튼 자체를 렌더하지 않음 — 1차 방어).
+- iOS는 항상 `true`(즉시 반환). Android는 SDK_INT를 서비스가 온보딩(`ensurePermission`)에서 미리 캐시하므로, 정리 화면 도달 시점엔 정확하다. **미조회 상태의 기본값은 `false`(안전)** — 그래서 `ensurePermission`을 거치지 않은 이례적 진입에선 잠깐 버튼이 숨을 수 있으나 오노출은 없다.
+- 2차 방어: `supportsDeletion==false`인데도 `deleteAsset`이 호출되면 서비스가 플랫폼 호출 없이 즉시 `false` 반환.
+
+### G.3 삭제 성공 시 컨트롤러가 해야 할 것 (F-14b')
+
+1. `deleteAsset(current)` `true` → `DeletionRepository.logDeletion()` **1회 호출**(streak 반영). `deletionRepositoryProvider` 로 주입받는다.
+2. 세션 인메모리 `deletedCount++`, `index++`(다음 카드), `remainingUnclassified` 에서 1 차감.
+3. **`markProcessed` 는 호출하지 않는다**(삭제 자산은 ProcessedAsset 미기록, DEL-4). 서비스가 `_pending`·스캔 캐시 정리는 내부에서 이미 수행하므로 컨트롤러가 추가로 할 것 없음.
+4. `false` → 아무 상태 변경 없이 카드 유지 + 스낵.
+
+### G.4 streak·완료 화면
+
+- `processedRepositoryProvider.streakDays()` 는 이제 **처리일 ∪ 삭제일** 합집합이다(시그니처·소비자 무변경, 홈·완료 그대로). 삭제만 한 날도 streak 인정(DEL-8).
+- 완료 화면 총계 = 배정 성공 + 세션 삭제 성공. 분해 "앨범 N장 · 삭제 M장"(휴지통 표현 금지 — Android 영구). 삭제 0이면 분해 생략. (§0.2, F-14c')
+
+### G.5 한계·실기기 검증 대기(F-14d')
+
+- **호스트 단위테스트 한계**: `deleteAsset` 의 플랫폼 분기(Platform.isAndroid/isIOS)는 호스트에서 검증 불가 → 순수 매핑(`applyDeletionResult`)·SDK 기본값·DB만 단위 검증했다. 실제 삭제 동작은 실기기 필수.
+- **iOS**(미연결): `deleteWithIds` 후 재스캔 시 자산이 큐에 미재등장(소스상 PASS, §9 Q5). "최근 삭제됨" 30일 복원 시 재등장(재정리 기회, DEL-5').
+- **Android API30+**: 표준 삭제 동의창 1회 + 영구삭제 → MediaStore에서 소멸 → 큐 미재등장(DEL-3'). 삭제+배정 세션의 동의창 = 삭제 탭수 + 배정 commit 1.
+- **Android API<30**: `supportsDeletion==false` 로 버튼 미노출(minSdk=24라 존재 가능한 레인지지만 안전장치 부재로 차단, D5-5).
+- 신규 네이티브: `MainActivity.kt` 채널 `on_the_fly/media_store` 에 `sdkInt` 메서드 추가(`Build.VERSION.SDK_INT` 즉답). 삭제 자체는 photo_manager `deleteWithIds` 재사용(네이티브 삭제 코드 없음).

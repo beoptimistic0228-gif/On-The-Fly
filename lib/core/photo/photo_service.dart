@@ -62,6 +62,27 @@ abstract class PhotoService {
   /// 실패·취소분은 예약 큐에 유지된다.
   Future<BatchAssignResult> commitAssignments();
 
+  /// 단건 즉시 삭제(D5, F-14a'). OS 표준 동의창을 포함해 **영구 삭제**한다
+  /// (Android API30+ `createDeleteRequest` / iOS `deleteAssets` → "최근 삭제됨"
+  /// 30일). 배정과 달리 stage→commit 이 아니라 **즉시** 실행되며, 앱 내 되돌리기는
+  /// 없다(OS 동의창이 유일 확인 지점).
+  ///
+  /// 반환: `true` = 삭제 성공, `false` = 취소 또는 실패. 플랫폼상 취소와 실패를
+  /// **구분할 수 없다**(둘 다 빈 반환) → 호출측은 `false` 시 "삭제하지 못했어요"로
+  /// 통합 안내하고 카드를 유지한다. photo_manager 타입은 노출하지 않는다.
+  ///
+  /// **호출 전 [supportsDeletion] 로 게이트할 것**(1차 방어). 지원 안 되는
+  /// 플랫폼/구버전에서 호출돼도 안전하게 `false` 를 반환한다(2차 방어).
+  Future<bool> deleteAsset(AssetRef asset);
+
+  /// 삭제 기능 지원 여부(UI 삭제 버튼 노출 게이트, D5-5).
+  ///
+  /// iOS/macOS = 항상 지원. Android 는 **API 30(Android 11) 이상만** 지원한다
+  /// (그 미만은 OS 동의창 없는 직삭제 경로라 안전장치가 없어 미노출). 동기 getter
+  /// 이며, Android SDK 버전은 서비스가 초기에 미리 조회해 캐시한다(미조회 상태의
+  /// 기본값은 "미지원" → 안전).
+  bool get supportsDeletion;
+
   /// 앨범 생성(F-04). 로컬 Album 행 생성 후 시스템 앨범/폴더 참조를 채운다.
   Future<AlbumRef> createAlbum(String name);
 
