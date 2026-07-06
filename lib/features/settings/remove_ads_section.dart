@@ -78,11 +78,6 @@ class _RemoveAdsSectionState extends ConsumerState<RemoveAdsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text('광고', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
         if (adsRemoved)
           const ListTile(
             leading: Icon(Icons.check_circle, color: Colors.green),

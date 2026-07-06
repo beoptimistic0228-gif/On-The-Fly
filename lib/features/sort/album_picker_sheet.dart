@@ -78,9 +78,15 @@ class _AlbumPickerSheetState extends ConsumerState<_AlbumPickerSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Text('어느 앨범으로 옮길까요?',
                   style: theme.textTheme.titleLarge),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text('탭 한 번으로 배정돼요',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ),
             // 새 앨범 생성 인라인 입력.
             Padding(
@@ -95,8 +101,6 @@ class _AlbumPickerSheetState extends ConsumerState<_AlbumPickerSheet> {
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.create_new_folder_outlined),
                         hintText: '새 앨범 이름',
-                        border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                   ),

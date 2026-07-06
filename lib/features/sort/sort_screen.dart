@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/theme.dart';
 import '../../core/models/album_ref.dart';
 import '../../core/models/asset_ref.dart';
 import '../home/home_providers.dart';
@@ -12,6 +13,9 @@ import 'swipeable_card.dart';
 import 'video_preview_sheet.dart';
 
 /// 정리(스와이프) 화면 — MVP의 심장. stage → commit 흐름.
+///
+/// 디자인: 사진이 주인공(원칙 1)이 되도록 화면 배경을 깊은 웜 차콜 "라이트박스"로
+/// 두고, 조작 크롬(퀵 앨범 칩·액션·commit)은 하단 서피스 패널에 모아 최소화한다.
 class SortScreen extends ConsumerStatefulWidget {
   const SortScreen({super.key});
 
@@ -84,24 +88,57 @@ class _SortScreenState extends ConsumerState<SortScreen> {
       }
     });
 
+    final ready = state.status == SortStatus.ready && state.current != null;
+    final progress = (ready && state.total > 0)
+        ? (state.index + 1) / state.total
+        : null;
+
     return Scaffold(
+      backgroundColor: kSortCanvas,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        // 다크 라이트박스 위라 제목도 밝게(테마 titleTextStyle 이 onSurface=어두움
+        // 이므로 여기서 흰색으로 덮는다).
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+        ),
         title: const Text('정리'),
         actions: [
-          if (state.status == SortStatus.ready && state.current != null)
+          if (ready)
             Center(
               child: Padding(
-                padding: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.only(right: 20),
                 child: Text(
                   '${state.index + 1} / ${state.total}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
         ],
+        bottom: progress == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(3),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 3,
+                  backgroundColor: Colors.white24,
+                  valueColor:
+                      const AlwaysStoppedAnimation(Color(0xFFFFB68A)),
+                ),
+              ),
       ),
       body: switch (state.status) {
-        SortStatus.loading => const _Centered(child: CircularProgressIndicator()),
+        SortStatus.loading =>
+          const _Centered(child: CircularProgressIndicator()),
         SortStatus.denied => _DeniedView(onBack: () => context.go('/home')),
         SortStatus.error => _ErrorView(
             onRetry: () => ref.read(sortControllerProvider.notifier).load(),
@@ -112,22 +149,24 @@ class _SortScreenState extends ConsumerState<SortScreen> {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('정리하는 중...'),
+                Text('정리하는 중...',
+                    style: TextStyle(color: Colors.white70, fontSize: 15)),
               ],
             ),
           ),
-        SortStatus.ready =>
-          state.current == null ? const _Centered(child: CircularProgressIndicator()) : _SortReady(
-              state: state,
-              onSwipe: (dir) => _onSwipe(dir, state),
-              onTapAsset: () => _onTapAsset(state.current!),
-              onAssignTap: () => _openAlbumPicker(state.current!),
-              onSkip: () =>
-                  ref.read(sortControllerProvider.notifier).skipCurrent(),
-              onUndo: () => ref.read(sortControllerProvider.notifier).undo(),
-              onQuickAlbum: _assignToRecent,
-              onCommit: _finish,
-            ),
+        SortStatus.ready => state.current == null
+            ? const _Centered(child: CircularProgressIndicator())
+            : _SortReady(
+                state: state,
+                onSwipe: (dir) => _onSwipe(dir, state),
+                onTapAsset: () => _onTapAsset(state.current!),
+                onAssignTap: () => _openAlbumPicker(state.current!),
+                onSkip: () =>
+                    ref.read(sortControllerProvider.notifier).skipCurrent(),
+                onUndo: () => ref.read(sortControllerProvider.notifier).undo(),
+                onQuickAlbum: _assignToRecent,
+                onCommit: _finish,
+              ),
       },
     );
   }
@@ -185,96 +224,128 @@ class _SortReady extends StatelessWidget {
 
     return Column(
       children: [
+        // 사진 = 주인공. 라이트박스 위에 크게, 부드러운 그림자.
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
             child: SwipeableCard(
               key: ValueKey(asset.id),
               onSwipe: onSwipe,
               onTap: onTapAsset,
-              child: Card(
-                clipBehavior: Clip.antiAlias,
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
                 ),
-                child: AssetThumbnail(
-                  assetId: asset.id,
-                  mediaType: asset.mediaType,
-                  size: 800,
-                  fit: BoxFit.cover,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: AssetThumbnail(
+                    assetId: asset.id,
+                    mediaType: asset.mediaType,
+                    size: 800,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             ),
           ),
         ),
-        // 최근 앨범 퀵버튼.
-        if (recent.isNotEmpty)
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                for (final a in recent)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      avatar: const Icon(Icons.folder_outlined, size: 18),
-                      label: Text(a.name),
-                      onPressed: () => onQuickAlbum(a),
+        // 하단 조작 패널 — 크롬을 여기 모아 사진 영역을 넓게 유지.
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, 12 + MediaQuery.of(context).padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 최근 앨범 퀵버튼 — 탭 1회 배정(원칙 2).
+              if (recent.isNotEmpty)
+                SizedBox(
+                  height: 40,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final a in recent)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ActionChip(
+                            avatar: const Icon(Icons.folder_rounded, size: 18),
+                            label: Text(a.name),
+                            onPressed: () => onQuickAlbum(a),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              if (recent.isNotEmpty) const SizedBox(height: 12),
+              // 액션 3버튼.
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _RoundAction(
+                    icon: Icons.schedule,
+                    label: '나중에',
+                    color: theme.colorScheme.onSurfaceVariant,
+                    onTap: onSkip,
+                  ),
+                  _RoundAction(
+                    icon: Icons.undo_rounded,
+                    label: '되돌리기',
+                    color: theme.colorScheme.secondary,
+                    onTap: state.canUndo ? onUndo : null,
+                  ),
+                  _RoundAction(
+                    icon: Icons.folder_open_rounded,
+                    label: '앨범 배정',
+                    color: theme.colorScheme.primary,
+                    prominent: true,
+                    onTap: onAssignTap,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // 스테이징 배너 + commit.
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          state.pendingCount > 0 ? '옮길 준비 완료' : '대기 중인 사진 없음',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          state.pendingCount > 0
+                              ? '${state.pendingCount}장'
+                              : '스와이프로 배정해요',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
-            ),
-          ),
-        // 액션 버튼 행.
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _RoundAction(
-                icon: Icons.schedule,
-                label: '나중에',
-                color: theme.colorScheme.outline,
-                onTap: onSkip,
-              ),
-              _RoundAction(
-                icon: Icons.undo,
-                label: '되돌리기',
-                color: theme.colorScheme.secondary,
-                onTap: state.canUndo ? onUndo : null,
-              ),
-              _RoundAction(
-                icon: Icons.folder_open,
-                label: '앨범 배정',
-                color: theme.colorScheme.primary,
-                onTap: onAssignTap,
-              ),
-            ],
-          ),
-        ),
-        // 스테이징 배너 + commit.
-        Container(
-          width: double.infinity,
-          color: theme.colorScheme.surfaceContainerHighest,
-          padding: EdgeInsets.fromLTRB(
-              20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  state.pendingCount > 0
-                      ? '옮길 ${state.pendingCount}장 대기 중'
-                      : '스와이프로 앨범에 배정해요',
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: state.pendingCount > 0 ? onCommit : null,
-                icon: const Icon(Icons.check),
-                label: Text('정리 (${state.pendingCount})'),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: state.pendingCount > 0 ? onCommit : null,
+                    icon: const Icon(Icons.check_rounded),
+                    label: Text('정리 (${state.pendingCount})'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -290,34 +361,47 @@ class _RoundAction extends StatelessWidget {
     required this.label,
     required this.color,
     this.onTap,
+    this.prominent = false,
   });
 
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback? onTap;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     final effective = enabled ? color : Theme.of(context).disabledColor;
+    // 배정 버튼은 판단→행동의 종착점이라 시각적으로 강조(채운 원)한다(원칙 2).
+    final bg = prominent && enabled
+        ? color
+        : effective.withValues(alpha: 0.14);
+    final fg = prominent && enabled
+        ? Theme.of(context).colorScheme.onPrimary
+        : effective;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: effective.withValues(alpha: 0.12),
+          color: bg,
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Icon(icon, color: effective, size: 28),
+              padding: EdgeInsets.all(prominent ? 18 : 15),
+              child: Icon(icon, color: fg, size: prominent ? 30 : 26),
             ),
           ),
         ),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: effective, fontSize: 12)),
+        const SizedBox(height: 6),
+        Text(label,
+            style: TextStyle(
+                color: effective,
+                fontSize: 12,
+                fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -330,30 +414,20 @@ class _Centered extends StatelessWidget {
   Widget build(BuildContext context) => Center(child: child);
 }
 
+/// 정리 화면의 비정상 상태(권한/에러)는 다크 라이트박스 위에 표시되므로
+/// 밝은 전경색으로 그린다.
 class _DeniedView extends StatelessWidget {
   const _DeniedView({required this.onBack});
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_outline, size: 64),
-          const SizedBox(height: 16),
-          const Text('사진 접근이 필요해요', textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          const Text('설정에서 사진 접근을 허용한 뒤 다시 시도해 주세요.',
-              textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(onPressed: onBack, child: const Text('홈으로')),
-          ),
-        ],
-      ),
+    return _DarkStateView(
+      icon: Icons.lock_outline,
+      title: '사진 접근이 필요해요',
+      message: '설정에서 사진 접근을 허용한 뒤 다시 시도해 주세요.',
+      buttonLabel: '홈으로',
+      onPressed: onBack,
     );
   }
 }
@@ -364,18 +438,63 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _DarkStateView(
+      icon: Icons.error_outline,
+      title: '사진을 불러오지 못했어요',
+      message: '잠시 후 다시 시도해 주세요.',
+      buttonLabel: '다시 시도',
+      onPressed: onRetry,
+    );
+  }
+}
+
+class _DarkStateView extends StatelessWidget {
+  const _DarkStateView({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String buttonLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline, size: 64),
-          const SizedBox(height: 16),
-          const Text('사진을 불러오지 못했어요', textAlign: TextAlign.center),
-          const SizedBox(height: 24),
+          Container(
+            width: 88,
+            height: 88,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: kSortCanvasElevated,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 44, color: Colors.white70),
+          ),
+          const SizedBox(height: 20),
+          Text(title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white60, fontSize: 14)),
+          const SizedBox(height: 28),
           SizedBox(
             width: double.infinity,
-            child: FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+            child: FilledButton(onPressed: onPressed, child: Text(buttonLabel)),
           ),
         ],
       ),

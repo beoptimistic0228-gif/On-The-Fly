@@ -56,39 +56,120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          SwitchListTile(
-            title: const Text('매일 정리 알림'),
-            value: _enabled,
-            onChanged: _toggle,
-          ),
-          ListTile(
-            enabled: _enabled,
-            leading: const Icon(Icons.access_time),
-            title: const Text('알림 시각'),
-            trailing: Text(_time.format(context)),
-            onTap: _enabled ? _pickTime : null,
-          ),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('프라이버시',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '사진·영상은 폰 밖으로 나가지 않습니다. 모든 정리는 기기 안에서만 '
-              '이뤄지며, 원본이 외부 서버로 전송되지 않습니다.',
+          // 알림.
+          _Section(
+            title: '알림',
+            child: Column(
+              children: [
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('매일 정리 알림'),
+                  subtitle: const Text('정한 시간에 하루 한 번 알려드려요.'),
+                  value: _enabled,
+                  onChanged: _toggle,
+                ),
+                const Divider(indent: 16, endIndent: 16),
+                ListTile(
+                  enabled: _enabled,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('알림 시각'),
+                  trailing: Text(
+                    _time.format(context),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: _enabled
+                          ? theme.colorScheme.primary
+                          : theme.disabledColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  onTap: _enabled ? _pickTime : null,
+                ),
+              ],
             ),
           ),
-          const RemoveAdsSection(),
-          const SizedBox(height: 24),
+          // 프라이버시.
+          _Section(
+            title: '프라이버시',
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.shield_outlined,
+                        size: 22,
+                        color: theme.colorScheme.onSecondaryContainer),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '사진·영상은 폰 밖으로 나가지 않습니다. 모든 정리는 기기 안에서만 '
+                      '이뤄지며, 원본이 외부 서버로 전송되지 않습니다.',
+                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 광고 제거(F-10) — 자체 섹션 스타일로 렌더.
+          _Section(
+            title: '광고',
+            child: const RemoveAdsSection(),
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// 설정의 그룹 섹션 — 헤더 + 카드로 묶어 정돈감을 준다.
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.child});
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+          child: Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        ),
+      ],
     );
   }
 }

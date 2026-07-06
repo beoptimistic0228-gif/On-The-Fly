@@ -40,6 +40,7 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final o = widget.outcome;
 
     return Scaffold(
@@ -49,62 +50,86 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
           child: Column(
             children: [
               const Spacer(),
-              // 축하 애니메이션(간단 스케일 인).
+              // 축하 마크 — 은은한 후광 + elasticOut 스케일 인.
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.6, end: 1),
-                duration: const Duration(milliseconds: 500),
+                duration: const Duration(milliseconds: 600),
                 curve: Curves.elasticOut,
                 builder: (context, scale, child) =>
                     Transform.scale(scale: scale, child: child),
                 child: Container(
-                  width: 120,
-                  height: 120,
+                  width: 132,
+                  height: 132,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
                     shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [scheme.primary, scheme.tertiary],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: 0.35),
+                        blurRadius: 32,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
                   child: Icon(Icons.check_rounded,
-                      size: 72, color: theme.colorScheme.onPrimaryContainer),
+                      size: 76, color: scheme.onPrimary),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               Text(
                 '정리 완료!',
                 style: theme.textTheme.headlineMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(
                 '${o.successCount}장을 앨범으로 옮겼어요',
-                style: theme.textTheme.titleMedium,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(color: scheme.onSurfaceVariant),
               ),
+              const SizedBox(height: 10),
+              // 옮긴 사진이 어디 있는지 안내(삼성 갤러리 QA S-2 후속).
+              if (o.successCount > 0)
+                Text(
+                  '옮긴 사진은 갤러리 앨범에 담겨요. 삼성 갤러리라면 '
+                  '‘앨범 › 모든 앨범’에서 볼 수 있어요.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
               if (o.failedCount > 0) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
+                    color: scheme.errorContainer,
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
                     '${o.failedCount}장은 반영하지 못했어요. 다음에 다시 시도해요.',
-                    style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                    style: TextStyle(color: scheme.onErrorContainer),
                     textAlign: TextAlign.center,
                   ),
                 ),
               ],
               const SizedBox(height: 32),
-              // streak 시각화.
+              // streak 시각화 — iOS 성취감 보완(원칙 3).
               FutureBuilder<int>(
                 future: _streakFuture,
                 builder: (context, snap) {
                   final streak = snap.data ?? 0;
+                  final filled = streak.clamp(0, 7);
                   return Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                        vertical: 20, horizontal: 28),
+                        vertical: 22, horizontal: 24),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(20),
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(
                       children: [
@@ -113,9 +138,29 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
                         Text(
                           streak > 0 ? '$streak일 연속 정리 중!' : '오늘부터 시작이에요',
                           style: theme.textTheme.titleLarge?.copyWith(
-                            color: theme.colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.w600,
+                            color: scheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w700,
                           ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            for (var i = 0; i < 7; i++)
+                              Expanded(
+                                child: Container(
+                                  height: 7,
+                                  margin:
+                                      EdgeInsets.only(right: i == 6 ? 0 : 6),
+                                  decoration: BoxDecoration(
+                                    color: i < filled
+                                        ? scheme.primary
+                                        : scheme.onPrimaryContainer
+                                            .withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     ),

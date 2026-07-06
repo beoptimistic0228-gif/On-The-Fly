@@ -147,8 +147,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return _StepScaffold(
       children: [
         const Spacer(),
-        Icon(Icons.auto_awesome_mosaic,
-            size: 96, color: theme.colorScheme.primary),
+        const _HeroIcon(Icons.auto_awesome_mosaic),
         const SizedBox(height: 32),
         Text('하루 한 번, 스와이프로 정리',
             style: theme.textTheme.headlineSmall
@@ -156,24 +155,37 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             textAlign: TextAlign.center),
         const SizedBox(height: 12),
         Text('밀린 사진·영상을 매일 조금씩,\n앨범으로 가볍게 정리해요.',
-            style: theme.textTheme.bodyLarge, textAlign: TextAlign.center),
+            style: theme.textTheme.bodyLarge
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center),
         const SizedBox(height: 24),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: theme.colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Row(
             children: [
-              Icon(Icons.lock_outline,
-                  color: theme.colorScheme.onSecondaryContainer),
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSecondaryContainer
+                      .withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.lock_outline,
+                    size: 22, color: theme.colorScheme.onSecondaryContainer),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   '사진은 폰 밖으로 나가지 않아요. 모든 정리는 기기 안에서만 이뤄져요.',
                   style: TextStyle(
-                      color: theme.colorScheme.onSecondaryContainer),
+                      color: theme.colorScheme.onSecondaryContainer,
+                      height: 1.4),
                 ),
               ),
             ],
@@ -197,8 +209,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return _StepScaffold(
       children: [
         const Spacer(),
-        Icon(Icons.photo_library_outlined,
-            size: 88, color: theme.colorScheme.primary),
+        const _HeroIcon(Icons.photo_library_outlined),
         const SizedBox(height: 24),
         Text('사진 접근을 허용해 주세요',
             style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
@@ -251,8 +262,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return _StepScaffold(
       children: [
         const Spacer(),
-        Icon(Icons.notifications_active_outlined,
-            size: 88, color: theme.colorScheme.primary),
+        const _HeroIcon(Icons.notifications_active_outlined),
         const SizedBox(height: 24),
         Text('매일 정리 알림',
             style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
@@ -302,7 +312,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return _StepScaffold(
       children: [
         const Spacer(),
-        Icon(Icons.swipe, size: 88, color: theme.colorScheme.primary),
+        const _HeroIcon(Icons.swipe),
         const SizedBox(height: 24),
         // 개수 스캔 중(대용량 라이브러리는 수십 초)에는 멈춘 게 아니라
         // 세는 중임을 명시한다 — 홈 로딩 문구와 동일 톤.
@@ -371,23 +381,54 @@ class _StepIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
       child: Row(
         children: [
           for (var i = 0; i < total; i++)
             Expanded(
-              child: Container(
-                height: 4,
+              // 현재 스텝은 더 길게 강조(진행감). 지난/현재는 primary, 남은 건 흐리게.
+              flex: i == current ? 3 : 2,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                height: 5,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 decoration: BoxDecoration(
                   color: i <= current
                       ? theme.colorScheme.primary
                       : theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 온보딩 히어로 아이콘 — 브랜드 톤의 부드러운 그라데이션 원 안에 아이콘.
+class _HeroIcon extends StatelessWidget {
+  const _HeroIcon(this.icon);
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Container(
+        width: 116,
+        height: 116,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [scheme.primaryContainer, scheme.tertiaryContainer],
+          ),
+        ),
+        child: Icon(icon, size: 56, color: scheme.onPrimaryContainer),
       ),
     );
   }

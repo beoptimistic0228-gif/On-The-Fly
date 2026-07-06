@@ -77,6 +77,7 @@ class _SwipeableCardState extends State<SwipeableCard>
       return _HintBadge(
         label: '배정',
         color: theme.colorScheme.primary,
+        onColor: theme.colorScheme.onPrimary,
         icon: Icons.folder_open,
         alignment: Alignment.topRight,
       );
@@ -93,6 +94,7 @@ class _SwipeableCardState extends State<SwipeableCard>
       return _HintBadge(
         label: '최근 앨범',
         color: theme.colorScheme.tertiary,
+        onColor: theme.colorScheme.onTertiary,
         icon: Icons.bookmark_added,
         alignment: Alignment.topCenter,
       );
@@ -130,10 +132,12 @@ class _HintBadge extends StatelessWidget {
     required this.color,
     required this.icon,
     required this.alignment,
+    this.onColor = Colors.white,
   });
 
   final String label;
   final Color color;
+  final Color onColor;
   final IconData icon;
   final Alignment alignment;
 
@@ -142,21 +146,28 @@ class _HintBadge extends StatelessWidget {
     return Align(
       alignment: alignment,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Colors.white, size: 18),
+              Icon(icon, color: onColor, size: 18),
               const SizedBox(width: 6),
               Text(label,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      color: onColor, fontWeight: FontWeight.bold)),
             ],
           ),
         ),

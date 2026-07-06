@@ -120,3 +120,55 @@
 ### 신규 오픈 이슈
 - **[MEDIUM] C-5. 동의창이 앨범(폴더 그룹)당 1회씩 연발** — 현 구현은 `moveAssetsToPath` 를 앨범 그룹별 호출 → 앨범 N개 배정 시 시스템 동의창 N회. 소유자 실사용 소감: "대량 정리 시 UX 치명적". 개선 방향: **전체 pending 자산의 쓰기 권한을 단일 batch write request 로 선획득** 후 앨범별 이동을 무동의 진행. photo_manager 가 raw `createWriteRequest` 를 노출하는지 조사 필요(미노출 시 플랫폼 채널 검토) — platform-integrator 배정.
 - ~~**[INFO] S-2. 삼성 갤러리 앱에서 새 앨범 미표시(관찰)**~~ — **해소(2026-07-06)**. 파일·MediaStore 정상이었고, 원인은 삼성 갤러리의 앨범 탭 기본 보기가 일부만 노출하는 것 — **"모든 앨범" 보기로 전환하면 정상 표시**(소유자 확인). 앱 결함 아님. 참고: 온보딩/완료 화면 문구에 "갤러리의 '모든 앨범'에서 확인" 힌트를 넣을지는 UI/UX 개선 세션에서 판단.
+
+---
+
+## §7. 2026-07-06 QA + UI 개편 재검증 (qa-verifier)
+
+> 검증 대상: (1) 커밋 `0984709`(C-5 단일 batch 동의 채널 + C-4 취소/실패 구분 + 16k 스캔 캐시, 실기기 3건 PASS), (2) 미커밋 working tree(feature-builder UI/UX 개편, 12파일 +1012/-284, 노트 §J).
+> 방법: 품질 게이트 실제 실행 + 경계면 교차 대조(features ↔ core 공개 계약) + 핵심 불변식 재확인 + 회귀 함정 grep + 다크 테마 코드 검토.
+
+### 7.1 품질 게이트 (실제 실행)
+| 게이트 | 결과 | 근거 |
+|--------|------|------|
+| `flutter analyze` | **PASS** — No issues found! (ran in 3.4s) | exit 0 |
+| `flutter test` | **PASS — 44/44** (All tests passed!) | `sort_controller_reentry_test`(I-1 회귀) 포함 전원 통과 |
+
+두 게이트 모두 노트 기대치(클린 + 44/44)와 일치.
+
+### 7.2 경계면 shape 교차 대조 (features ↔ core 공개 계약) — 모두 일치
+- **BatchAssignResult.cancelled → CommitOutcome.cancelled → UI**: `sort_controller.commit()`(L204~227)이 `result.cancelled` 를 `CommitOutcome.cancelled` 로 정확히 전파. `sort_screen._finish()`(L38~42)의 cancelled 분기가 UI 개편 후에도 **보존**됨 → "동의가 필요해요, 예약은 그대로" 스낵 + 정리 화면 유지, `/done` 미전이. C-4 실기기 PASS와 코드 정합.
+- **succeeded → markProcessed(성공분 한정)**: commit L206~215 이 `result.succeeded` 만 순회하며 `s.finalAssetId` 로 markProcessed. 실패/취소분은 pending 큐 유지. **stage≠처리 불변식 유지**.
+- **ProcessedRepository.processedCount() 신규**: core 에 추가된 계약을 스캔 캐시 지문(`photo_manager_photo_service.dart` L97·594~618)이 정확히 소비. features 는 이 메서드를 직접 호출하지 않음(홈은 여전히 `loadUnclassifiedQueue().length`) — 계약 최소화 유지, 편차 없음.
+- **PhotoService 9+메서드**: UI 개편은 `lib/core` 무수정(diff stat 확인 — core 파일 0건). features 는 abstract 타입만 소비, photo_manager 타입 노출 0. `sort_controller`/`CommitOutcome`/`providers` 도 미변경(J-4 주장과 diff 일치).
+
+### 7.3 핵심 불변식 재확인 — 모두 유지
+- **(a) 광고 위치**: `CompletionAdSlot` 은 `done_screen.dart:173` — streak 카드(L120~169) **아래**, "홈으로" 버튼(L177) **위**. UI 개편에서 밀리지 않음(원칙 4). **정리 흐름 내 광고 참조 0**: `lib/features/sort/` grep 결과 실제 광고 위젯/`AdGate`/`CompletionAdSlot`/banner 참조 **없음**(매칭은 전부 `read`·`Padding`·`loading` 등 부분문자열). 구조적으로 "정리 흐름 중 삽입" 불가.
+- **(b) 미분류 판별 = 처리 ID 기준**: 이번 세션 core 판별 로직 무변경. 스캔 캐시 지문은 `processedCount`(SQL COUNT) 파생이며 OS 앨범 소속이 아님. iOS 원본 타임라인 잔존과 무관하게 처리 ID 집합으로 판별 유지.
+- **(c) 프라이버시**: 신규 `MediaMoveHandler.kt` 는 MediaStore `_id`→`Uri`→`RELATIVE_PATH` 갱신만 수행. **원본 바이트 read/InputStream/File copy/http/upload 경로 0건**(grep 확인). 명시 주석 L29 "자산 참조(_id)만 다루며 원본 바이트를 읽거나 앱 밖으로 내보내지 않는다"와 코드 일치. 신규 유출 경로 없음.
+- **(d) 스캔 캐시 무효화 — "큐는 정확" 유지**: 지문 = `(total 네이티브 COUNT, processedCount, lastProcessedMicros)`. 신규 자산→total 변화, commit→processedCount·lastProcessedAt 변화 → 캐시 미스→정확 재스캔. commit 성공 시 `_queueCache=null` 명시 무효화(L181) 병행. 관측 가능한 변화가 있으면 항상 실제 로드. 총개수 동일 외부 삭제+추가(commit 없음) 병적 케이스만 근사이며 다음 카운트 변화에서 자가치유 — 문서화된 허용 범위("카운트는 근사").
+
+### 7.4 회귀 함정 grep — 모두 회피 확인
+- **`Size.fromHeight` 재유입(305984a 회귀)**: FilledButton `minimumSize` 에 **미사용**. 발견된 2건은 (1) `theme.dart:110` 금지 경고 주석, (2) `sort_screen.dart:129` `PreferredSize(preferredSize: Size.fromHeight(3))` = AppBar 하단 LinearProgressIndicator 높이 지정(정당한 용법, 버튼 아님). 테마 버튼 `minimumSize` 는 `Size(64,56)`/`Size(64,52)` 고정폭 유지. 풀너비는 콜사이트 `SizedBox(width: double.infinity)` 옵트인(done_screen:177 등).
+- **autoDispose 재진입(I-1)**: `sort_controller_reentry_test`(테스트 +42) 통과 — 재진입마다 새 인스턴스 load() 재실행. UI 개편이 이 로직 미변경.
+
+### 7.5 다크 테마 대비 검토 — 신규 오픈 이슈 (아래 §7.6 참조)
+- **홈 히어로/streak 카드**: `primaryContainer`/`tertiaryContainer` 배경에 `onPrimaryContainer` 전경 = 올바른 M3 페어링. 라이트/다크 모두 안전.
+- **정리 하단 패널**: `colorScheme.surface`/`onSurfaceVariant` 테마 파생 — 다크 자동 적응. 정리 캔버스 `kSortCanvas`(항상 다크)의 흰색 텍스트도 테마 무관하게 정합.
+- **문제 발견**: `Colors.white` 전경을 **다크에서 밝아지는** `scheme.primary`(#FFB68A)/`scheme.tertiary`(#D9D08E) 배경 위에 사용한 3개 지점 → 다크 모드 한정 대비 저하(§7.6 D-1).
+
+### 7.6 신규 오픈 이슈
+
+- **[MEDIUM] D-1. 다크 테마 — 흰색 전경 on 밝은 primary/tertiary 배경(대비 저하, 다크 한정)**
+  - **경계면**: 컴포넌트 색상 ↔ ColorScheme(다크). 다크 `primary=#FFB68A`, `tertiary=#D9D08E` 는 **밝은 톤**이라 `Colors.white` 전경과 대비 ~1.7:1(WCAG 그래픽 3:1 미달). 라이트 테마는 `primary=#B85A22`(진함)이라 흰색 대비 ~5.3:1 정상 — **다크에서만** 발생.
+  - **지점 3곳**:
+    1. `done_screen.dart:78~79` — 완료 체크마크 `Icon(Icons.check_rounded, size:76, color: Colors.white)` on `primary→tertiary` 그라데이션 원. 다크에서 성취 순간(원칙 3·iOS 성취감 보완)의 핵심 마크가 흐려짐.
+    2. `sort_screen.dart:381` — `_RoundAction` prominent(="앨범 배정" 버튼) `fg = Colors.white` on `bg = scheme.primary`. 정리 화면 최우선 CTA(원칙 2 "탭 1회") 아이콘 대비 저하. 채운 원 자체는 보이므로 탭은 가능.
+    3. `swipeable_card.dart:162·166` — `_HintBadge` "배정"(bg=primary)·"최근 앨범"(bg=tertiary) 배지의 흰색 아이콘/라벨. 스와이프 중 드래그 힌트라 일시적이나 "배정"이 최다 사용 방향.
+  - **재현**: 시스템 다크 모드로 앱 실행 → (1) 정리 완료 화면, (2) 정리 화면 배정 버튼, (3) 우측 드래그 힌트 관찰. J-5 자체 기록상 완료 화면은 실기기 미진입(코드리뷰 대체), 스와이프/칩 탭 미실행이라 이 경로들이 육안 검증 사각.
+  - **수정 제안**: `Colors.white` → `scheme.onPrimary`(다크=#551D00 진함) / `scheme.onTertiary`. 그라데이션 원(done)은 `onPrimary` 로 통일. 각 1줄. 라이트 테마 영향 없음(onPrimary 라이트=white).
+  - **심각도 근거**: 기능·레이아웃 정상, 배경 원/pill 은 보임 — **비차단**. 다만 개편이 명시 강화 목표로 삼은 원칙 2·3 표면이고 다크 테마를 신규 추가한 세션이라 마감 품질 차원에서 커밋 전 수정 권장.
+
+### 7.7 커밋 가능 여부 판정
+- **커밋 `0984709`(이미 커밋)**: 게이트 클린 + 실기기 3건 PASS + 경계·불변식(C-4/C-5/캐시/프라이버시) 전부 정합. **문제 없음.**
+- **미커밋 working tree(UI 개편)**: 게이트 44/44 + analyze 클린, 경계면·핵심 불변식(광고 위치·판별 기준·프라이버시·캐시) 전원 유지, 회귀 함정(Size.fromHeight·autoDispose) 회피 확인. **커밋 가능**. 단 **D-1(MEDIUM, 다크 대비) 커밋 전 수정 권장** — `Colors.white`→`scheme.onPrimary/onTertiary` 3지점 1줄씩, 비차단이나 트리비얼 픽스. HIGH 이슈 없음.

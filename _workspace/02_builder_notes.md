@@ -253,3 +253,46 @@ Android 의 `google-services` gradle 플러그인은 `google-services.json` 이 
 4. **스토어 비소모성 상품** 등록: 상품 ID = `remove_ads`(=`MonetizationConfig.removeAdsProductId`). Play Console + App Store Connect 양쪽. 등록 전까지 설정의 광고 제거 버튼은 "준비 중"으로 우아하게 비활성.
 5. iOS: 실 광고 전 `Info.plist` 에 `SKAdNetworkItems`(AdMob 문서 목록) 추가 권장(성과 측정). MVP 빌드엔 불필요.
 6. (선택) 광고 노출/구매 지표는 Firebase 활성화 후 `ad_shown`·`remove_ads_purchased`·`remove_ads_restored` 로 확인.
+
+---
+
+## J. UI/UX 대폭 개선 (프로토타입 톤 탈피) — 2026-07-06
+
+> 대상: qa-verifier(상태 전이 회귀 확인), spec-architect(화면 스펙 편차 없음), final-auditor.
+> 상태: `flutter analyze` **No issues** · `flutter test` **44/44 통과** · `flutter build apk --debug` 성공 · 실기기(S22 Ultra) 라이트/다크 시각 확인.
+> 범위: `lib/app/`(theme·router) + `lib/features/` 전 화면 + `main.dart`(다크 테마 배선 2줄). **lib/core·android 무수정**(공개 인터페이스 그대로 소비).
+
+### J-1. 디자인 방향 (톤·타이포·컬러 근거)
+- **톤 = "따뜻하고 정돈된 데일리 습관".** 기존 시드가 차가운 인디고(#3D5AFE)라 테마 주석의 "따뜻한 톤"과 어긋났다. **허니 앰버(#CB5E24 시드)** 로 교체 — streak 의 🔥 와 색 계열이 하나로 묶여 "성취/습관" 정서를 강화(원칙 3, iOS 성취감 보완).
+- **컬러**: 웜 페이퍼 서피스(순백 대신 옅은 살구빛 #FCF7F2)로 사진이 배경에서 뜨게 함. primary/primaryContainer/surface 계열을 손으로 다듬어(ColorScheme.fromSeed + copyWith) M3 기본의 흐릿함을 걷어내고 브랜드 채도를 확보. 대비: 라이트 primary(#B85A22) on white ≈ 5.5:1, 버튼 라벨 가독 확보.
+- **다크 테마 신규**: 알림이 밤(기본 21:00)에 오는 앱이라 실사용 맥락에 맞고 사진이 어두운 배경에서 돋보인다(원칙 1). 웜 near-black(#16110D) + 라이트 피치 primary. `main.dart` 에 `darkTheme`+`themeMode.system` 배선.
+- **타이포**: 새 폰트 파일/네트워크 폰트 **미추가**(오프라인·의존성 최소). 기본(Roboto/시스템 CJK) 위에 display/headline 트래킹을 조이고 굵기를 w700~w800 로 올려 "의도된" 느낌만 부여. 홈 카운트는 displayLarge(w800) 히어로.
+- **컴포넌트 테마 정비**: Card(플랫·surfaceTint off·radius 20), Chip(pill·surfaceContainerHigh), BottomSheet(top radius 28·drag handle), InputDecoration(filled·radius 14), SnackBar(floating), AppBar(bold 22 title), Divider·ProgressIndicator 색. 라운드 지오메트리 통일(카드/시트 20~28, 버튼/입력 14~16, 칩 full).
+- **전환 애니메이션**: go_router `CustomTransitionPage` 로 페이드+살짝 떠오름(320ms). 급격한 좌우 슬라이드 대신 정리 루프가 차분히 이어지게. 뒤로가기 자동 역재생.
+
+### J-2. 화면별 변경 요지
+| 화면 | 변경 |
+|------|------|
+| **홈** | 미분류 카운트를 **그라데이션 히어로 카드**(displayLarge 숫자)로 격상. streak 카드에 **이번 주 7칸 습관 스트립**(원칙 3 강화) + 아이콘 원형 배지. 빈 상태는 🎉 축하 그라데이션 카드. CTA 풀너비·서브카피("30초면 충분해요"). 로딩/에러도 히어로 스켈레톤·원형 아이콘으로. |
+| **정리(스와이프)** | **다크 라이트박스 캔버스**(kSortCanvas)로 전환 → 사진이 화면 주인공(원칙 1). 사진 카드 대형·라운드 24·그림자. 진행도를 AppBar 하단 **LinearProgressIndicator** 로. 크롬(퀵 앨범 칩·액션 3버튼·스테이징/커밋)을 **하단 서피스 패널**에 응집. 배정 버튼은 채운 앰버 원으로 **강조**(원칙 2 "탭 1회"). 권한/에러 상태도 다크 대응. |
+| **완료** | 축하 마크를 **그라데이션 원+후광**으로, streak 카드에 7칸 스트립 추가. **삼성 갤러리 힌트**("옮긴 사진은 갤러리 앨범에 담겨요. 삼성 갤러리라면 '앨범 › 모든 앨범'에서") 자연 삽입(QA S-2 후속). **CompletionAdSlot 위치 불변**(streak 아래·홈 버튼 위, 원칙 4). |
+| **온보딩** | 히어로 아이콘을 **그라데이션 원 안에** 배치(`_HeroIcon`). 프라이버시 카드에 아이콘 배지. 스텝 인디케이터를 현재 스텝 강조(flex 3:2)+애니메이션. **테스트 고정 문자열 유지**('폰 밖으로 나가지 않'·'시작하기'). |
+| **설정** | 알림/프라이버시/광고를 **그룹 섹션 카드**(앰버 헤더+라운드 보더)로 재구성. 프라이버시에 shield 배지. RemoveAdsSection 의 자체 헤더/Divider 제거(섹션 래퍼가 대체). |
+| **앨범 모달** | 헤더에 "탭 한 번으로 배정돼요" 서브카피. 입력 필드 테마 스타일 상속(filled·라운드). 시트 top radius 28·drag handle. |
+| **스와이프 카드** | 방향 힌트 배지를 pill+그림자로. |
+
+### J-3. 4원칙 체크 결과
+1. **사진이 주인공** ✅ — 정리 화면 다크 라이트박스 위 대형 카드로 사진이 뷰포트 60%+ 차지, 크롬은 하단 패널로 응집.
+2. **배정은 탭 1회** ✅ — 하단 퀵 앨범 칩(즉시 배정) + 채운 앰버 "앨범 배정" 원버튼으로 판단→행동 최단.
+3. **streak 습관 자극** ✅ — 홈·완료 양쪽에 연속일 + **7칸 주간 스트립** 시각화로 강화.
+4. **보상 먼저 광고 나중** ✅ — 완료 화면 축하·통계·streak **먼저**, `CompletionAdSlot` 은 그 아래 원위치 그대로(코드 구조상 정리 화면엔 없음).
+
+### J-4. 회귀 방지 · 주의 준수
+- **테마 함정 준수**: FilledButton `minimumSize: Size(64,56)` 유지, 풀너비는 콜사이트 `SizedBox(width: double.infinity)` 옵트인. `Size.fromHeight` 미사용(305984a 백지화 재발 방지).
+- **정리 화면 AppBar title** 은 다크 캔버스 대비 위해 흰색 `titleTextStyle` 로 덮음(테마 title 색=onSurface 어두움이 foregroundColor 를 이겨 제목이 안 보이던 것 수정).
+- core 공개 인터페이스·상태 전이 로직 무변경(SortController/CommitOutcome/providers 그대로). 순수 프레젠테이션만 손봄 → `sort_controller_reentry_test` 등 44 테스트 전원 통과.
+- 신규 pub 의존성 **0개**.
+- `main.dart` 는 core/android 아님 — 다크 테마 활성화에 필요한 `darkTheme`+`themeMode` 2줄만 추가.
+
+### J-5. 실기기 시각 확인 (S22 Ultra, 라이트+다크)
+온보딩→홈→정리→설정→앨범모달 순회. 스크린샷(스크래치패드 `uishots/`): 홈 로딩/로드(16058장 히어로+streak), 정리 다크 라이트박스(사진 히어로+하단 패널), 설정 그룹 카드, 앨범 모달, 홈 다크. **실제 commit/스와이프/칩 탭 미실행**(소유자 실사진 보호) — 정리 화면은 렌더 확인까지만, 앨범 모달은 열기만 하고 미선택 dismiss. 완료 화면은 직접 진입(실 commit) 불가라 코드 리뷰+위젯 테스트로 대체.

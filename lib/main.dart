@@ -140,6 +140,8 @@ class _OnTheFlyAppState extends State<OnTheFlyApp> {
     return MaterialApp.router(
       title: '그때그때',
       theme: buildAppTheme(),
+      darkTheme: buildDarkAppTheme(),
+      themeMode: ThemeMode.system,
       debugShowCheckedModeBanner: false,
       routerConfig: _router,
     );
