@@ -22,6 +22,7 @@ class AppSettings {
   static const _kNotifyMinute = 'notify_minute';
   static const _kNotifyEnabled = 'notify_enabled';
   static const _kFirstSortAt = 'first_sort_at_ms';
+  static const _kSeenDeleteIntro = 'seen_delete_intro';
 
   bool get onboardingCompleted => _prefs.getBool(_kOnboardingDone) ?? false;
 
@@ -59,6 +60,13 @@ class AppSettings {
     if (_prefs.getInt(_kFirstSortAt) != null) return;
     await _prefs.setInt(_kFirstSortAt, when.millisecondsSinceEpoch);
   }
+
+  /// 삭제 최초 1회 교육 시트를 이미 봤는지(D5, §0.2). 삭제 버튼 첫 사용 시 시트를
+  /// 띄우고, 사용자가 [삭제]로 진행하면 true 로 기록해 이후엔 무마찰로 바로 삭제한다.
+  bool get hasSeenDeleteIntro => _prefs.getBool(_kSeenDeleteIntro) ?? false;
+
+  Future<void> setSeenDeleteIntro() =>
+      _prefs.setBool(_kSeenDeleteIntro, true);
 }
 
 final appSettingsProvider = Provider<AppSettings>(

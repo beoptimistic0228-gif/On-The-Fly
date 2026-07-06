@@ -71,12 +71,20 @@ void main() {
     expect(sent.single.params, isEmpty);
   });
 
-  test('logSortSessionComplete → sort_session_complete(처리수·남은수)', () {
-    service.logSortSessionComplete(processedCount: 5, remainingUnclassified: 3);
+  test('logSortSessionComplete → sort_session_complete(처리수·남은수·삭제수)', () {
+    service.logSortSessionComplete(
+        processedCount: 5, remainingUnclassified: 3, deletedCount: 2);
     final e = sent.single;
     expect(e.name, AnalyticsEvents.sortSessionComplete);
     expect(e.params[AnalyticsParams.processedCount], 5);
     expect(e.params[AnalyticsParams.remainingUnclassified], 3);
+    expect(e.params[AnalyticsParams.deletedCount], 2);
+  });
+
+  test('logAssetDeleted → asset_deleted, 속성 없음(D5)', () {
+    service.logAssetDeleted();
+    expect(sent.single.name, AnalyticsEvents.assetDeleted);
+    expect(sent.single.params, isEmpty);
   });
 
   test('logNotificationOpened → notification_opened, 속성 없음', () {
@@ -110,7 +118,8 @@ void main() {
     service.logSortSessionStart(unclassifiedCount: 10);
     service.logAssetAssigned(albumId: 'a');
     service.logAssetSkipped();
-    service.logSortSessionComplete(processedCount: 1, remainingUnclassified: 9);
+    service.logSortSessionComplete(
+        processedCount: 1, remainingUnclassified: 9, deletedCount: 0);
     service.logNotificationOpened();
 
     for (final e in sent) {

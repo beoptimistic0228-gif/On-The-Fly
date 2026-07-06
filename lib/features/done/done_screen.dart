@@ -29,12 +29,24 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
     // markProcessed 반영 후의 최신 streak.
     _streakFuture = ref.read(processedRepositoryProvider).streakDays();
 
-    // 첫 정리 완료일 기록(광고 게이트 기준, D3). 완료 화면은 commit 성공분이
-    // 있을 때만 진입하므로 여기가 "첫 정리 완료" 시점이다. idempotent —
-    // 최초 1회만 저장되고 이후 정리에선 무시된다.
-    if (widget.outcome.successCount > 0) {
+    // 첫 정리 완료일 기록(광고 게이트 기준, D3). 완료 화면은 배정 성공분 또는
+    // 세션 삭제분이 있을 때만 진입하므로 여기가 "첫 정리 완료" 시점이다(삭제만 한
+    // 세션도 완료로 인정, DEL-8). idempotent — 최초 1회만 저장되고 이후엔 무시된다.
+    if (widget.outcome.successCount > 0 || widget.outcome.deletedCount > 0) {
       ref.read(appSettingsProvider).recordFirstSortDateIfAbsent(DateTime.now());
     }
+  }
+
+  /// 총계 문구(§0.2). 배정+삭제 혼합이면 총량으로, 삭제만 한 세션이면 삭제 문구로,
+  /// 배정만이면 기존 문구를 유지한다(삭제 0 세션 하위호환).
+  String _totalLine(CommitOutcome o) {
+    if (o.deletedCount > 0 && o.successCount > 0) {
+      return '${o.successCount + o.deletedCount}장을 정리했어요';
+    }
+    if (o.deletedCount > 0 && o.successCount == 0) {
+      return '${o.deletedCount}장을 삭제했어요';
+    }
+    return '${o.successCount}장을 앨범으로 옮겼어요';
   }
 
   @override
@@ -86,13 +98,25 @@ class _DoneScreenState extends ConsumerState<DoneScreen> {
                     ?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
+              // 총계 = 배정 성공 + 세션 삭제 성공(§0.2). 성취감은 총량으로 크게.
               Text(
-                '${o.successCount}장을 앨범으로 옮겼어요',
+                _totalLine(o),
                 style: theme.textTheme.titleMedium
                     ?.copyWith(color: scheme.onSurfaceVariant),
               ),
+              // 분해 라인 — 배정과 삭제가 둘 다 있을 때만. "휴지통" 표현 금지
+              // (Android 는 영구 삭제). 삭제 0이면 생략(§G.4).
+              if (o.successCount > 0 && o.deletedCount > 0) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '앨범 ${o.successCount}장 · 삭제 ${o.deletedCount}장',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
               const SizedBox(height: 10),
-              // 옮긴 사진이 어디 있는지 안내(삼성 갤러리 QA S-2 후속).
+              // 옮긴 사진이 어디 있는지 안내(삼성 갤러리 QA S-2 후속). 배정이
+              // 있을 때만(삭제만 한 세션에선 앨범 안내를 숨긴다).
               if (o.successCount > 0)
                 Text(
                   '옮긴 사진은 갤러리 앨범에 담겨요. 삼성 갤러리라면 '

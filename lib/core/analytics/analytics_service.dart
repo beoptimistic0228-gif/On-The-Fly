@@ -45,11 +45,16 @@ abstract class AnalyticsService {
   /// 건너뛰기("나중에"). SKILL: `asset_skipped` — 속성 없음.
   void logAssetSkipped();
 
-  /// 정리 세션 완료(완료 화면 전이 = commit 실반영). SKILL: `sort_session_complete`
-  /// — 속성 = 처리수, 남은 미분류수.
+  /// 단건 삭제 성공(D5, F-14c'). `asset_deleted` — 속성 없음(asset_skipped 와 동형).
+  /// 사진 내용·id 미포함. 삭제 성공분마다 1회.
+  void logAssetDeleted();
+
+  /// 정리 세션 완료(완료 화면 전이 = commit 실반영 또는 세션 삭제분 존재).
+  /// SKILL: `sort_session_complete` — 속성 = 처리수, 남은 미분류수, 삭제수(D5).
   void logSortSessionComplete({
     required int processedCount,
     required int remainingUnclassified,
+    required int deletedCount,
   });
 
   /// 알림 탭으로 앱 진입. SKILL: `notification_opened` — 속성 없음.
@@ -77,6 +82,7 @@ abstract final class AnalyticsEvents {
   static const String sortSessionStart = 'sort_session_start';
   static const String assetAssigned = 'asset_assigned';
   static const String assetSkipped = 'asset_skipped';
+  static const String assetDeleted = 'asset_deleted';
   static const String sortSessionComplete = 'sort_session_complete';
   static const String notificationOpened = 'notification_opened';
   static const String adShown = 'ad_shown';
@@ -93,6 +99,7 @@ abstract final class AnalyticsParams {
   static const String albumId = 'album_id';
   static const String processedCount = 'processed_count';
   static const String remainingUnclassified = 'remaining_unclassified';
+  static const String deletedCount = 'deleted_count';
 }
 
 /// 기록된 분석 이벤트 1건(로컬 구현·테스트 검증용 값 객체).

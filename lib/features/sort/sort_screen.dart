@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/settings_store.dart';
 import '../../app/theme.dart';
 import '../../core/models/album_ref.dart';
 import '../../core/models/asset_ref.dart';
+import '../../core/providers.dart';
 import '../home/home_providers.dart';
 import '../shared/asset_thumbnail.dart';
 import 'album_picker_sheet.dart';
+import 'delete_intro_sheet.dart';
 import 'sort_controller.dart';
 import 'swipeable_card.dart';
 import 'video_preview_sheet.dart';
@@ -25,6 +28,7 @@ class SortScreen extends ConsumerStatefulWidget {
 
 class _SortScreenState extends ConsumerState<SortScreen> {
   bool _finishing = false;
+  bool _deleting = false;
 
   Future<void> _finish() async {
     if (_finishing) return;
@@ -75,6 +79,35 @@ class _SortScreenState extends ConsumerState<SortScreen> {
 
   void _assignToRecent(AlbumRef album) {
     ref.read(sortControllerProvider.notifier).assignCurrent(album);
+  }
+
+  /// 저강도 삭제 버튼 탭 → (최초 1회) 교육 시트 → 즉시 삭제(D5, F-14c').
+  Future<void> _onDelete() async {
+    if (_deleting) return;
+    _deleting = true;
+    try {
+      final asset = ref.read(sortControllerProvider).current;
+      if (asset == null) return;
+
+      // 최초 1회만 교육 시트. [삭제]로 진행할 때만 실제 삭제로 이어지고,
+      // 그때 플래그를 세워 이후엔 무마찰로 바로 삭제한다(§0.2).
+      final settings = ref.read(appSettingsProvider);
+      if (!settings.hasSeenDeleteIntro) {
+        final proceed = await showDeleteIntroSheet(context);
+        if (proceed != true || !mounted) return;
+        await settings.setSeenDeleteIntro();
+      }
+
+      // 시트를 여는 사이 카드가 넘어갔을 수 있으니 현재 자산이 동일할 때만 삭제.
+      if (ref.read(sortControllerProvider).current?.id != asset.id) return;
+
+      final ok = await ref.read(sortControllerProvider.notifier).deleteCurrent();
+      if (!mounted) return;
+      // 취소·실패 통합 문구(D5-6). 성공 시 카드가 이미 다음으로 넘어가 조용히 진행.
+      if (!ok) _snack('삭제하지 못했어요');
+    } finally {
+      _deleting = false;
+    }
   }
 
   @override
@@ -158,12 +191,16 @@ class _SortScreenState extends ConsumerState<SortScreen> {
             ? const _Centered(child: CircularProgressIndicator())
             : _SortReady(
                 state: state,
+                // supportsDeletion 은 동기 getter(서비스가 SDK 버전 캐시). false 면
+                // 삭제 버튼을 아예 렌더하지 않는다(§G.2 1차 방어).
+                showDelete: ref.read(photoServiceProvider).supportsDeletion,
                 onSwipe: (dir) => _onSwipe(dir, state),
                 onTapAsset: () => _onTapAsset(state.current!),
                 onAssignTap: () => _openAlbumPicker(state.current!),
                 onSkip: () =>
                     ref.read(sortControllerProvider.notifier).skipCurrent(),
                 onUndo: () => ref.read(sortControllerProvider.notifier).undo(),
+                onDelete: _onDelete,
                 onQuickAlbum: _assignToRecent,
                 onCommit: _finish,
               ),
@@ -198,21 +235,25 @@ class _SortScreenState extends ConsumerState<SortScreen> {
 class _SortReady extends StatelessWidget {
   const _SortReady({
     required this.state,
+    required this.showDelete,
     required this.onSwipe,
     required this.onTapAsset,
     required this.onAssignTap,
     required this.onSkip,
     required this.onUndo,
+    required this.onDelete,
     required this.onQuickAlbum,
     required this.onCommit,
   });
 
   final SortState state;
+  final bool showDelete;
   final void Function(SwipeDir) onSwipe;
   final VoidCallback onTapAsset;
   final VoidCallback onAssignTap;
   final VoidCallback onSkip;
   final VoidCallback onUndo;
+  final VoidCallback onDelete;
   final void Function(AlbumRef) onQuickAlbum;
   final VoidCallback onCommit;
 
@@ -288,10 +329,20 @@ class _SortReady extends StatelessWidget {
                   ),
                 ),
               if (recent.isNotEmpty) const SizedBox(height: 12),
-              // 액션 3버튼.
+              // 액션 버튼 행. 좌단에 저강도 삭제(supportsDeletion 일 때만) → 나중에
+              // → 되돌리기 → 배정(우단·강조). 삭제는 배정과 대각으로 떨어뜨려
+              // 오조작을 막고, 시각 위계를 낮춰(subdued·error색) 배정을 주인공으로 둔다.
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  if (showDelete)
+                    _RoundAction(
+                      icon: Icons.delete_outline,
+                      label: '삭제',
+                      color: theme.colorScheme.error,
+                      subdued: true,
+                      onTap: onDelete,
+                    ),
                   _RoundAction(
                     icon: Icons.schedule,
                     label: '나중에',
@@ -362,6 +413,7 @@ class _RoundAction extends StatelessWidget {
     required this.color,
     this.onTap,
     this.prominent = false,
+    this.subdued = false,
   });
 
   final IconData icon;
@@ -370,17 +422,31 @@ class _RoundAction extends StatelessWidget {
   final VoidCallback? onTap;
   final bool prominent;
 
+  /// 파괴적·비주류 액션(삭제)을 나머지보다 작게·저채도로 눌러 위계를 낮춘다(§2.1).
+  final bool subdued;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
     final effective = enabled ? color : Theme.of(context).disabledColor;
     // 배정 버튼은 판단→행동의 종착점이라 시각적으로 강조(채운 원)한다(원칙 2).
+    // 삭제(subdued)는 반대로 고스트 배경을 더 옅게 해 유혹을 억제한다.
     final bg = prominent && enabled
         ? color
-        : effective.withValues(alpha: 0.14);
+        : effective.withValues(alpha: subdued ? 0.10 : 0.14);
     final fg = prominent && enabled
         ? Theme.of(context).colorScheme.onPrimary
         : effective;
+    final pad = prominent
+        ? 18.0
+        : subdued
+            ? 12.0
+            : 15.0;
+    final iconSize = prominent
+        ? 30.0
+        : subdued
+            ? 22.0
+            : 26.0;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -391,8 +457,8 @@ class _RoundAction extends StatelessWidget {
             customBorder: const CircleBorder(),
             onTap: onTap,
             child: Padding(
-              padding: EdgeInsets.all(prominent ? 18 : 15),
-              child: Icon(icon, color: fg, size: prominent ? 30 : 26),
+              padding: EdgeInsets.all(pad),
+              child: Icon(icon, color: fg, size: iconSize),
             ),
           ),
         ),
@@ -400,7 +466,7 @@ class _RoundAction extends StatelessWidget {
         Text(label,
             style: TextStyle(
                 color: effective,
-                fontSize: 12,
+                fontSize: subdued ? 11 : 12,
                 fontWeight: FontWeight.w600)),
       ],
     );

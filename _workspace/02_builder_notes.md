@@ -296,3 +296,43 @@ Android 의 `google-services` gradle 플러그인은 `google-services.json` 이 
 
 ### J-5. 실기기 시각 확인 (S22 Ultra, 라이트+다크)
 온보딩→홈→정리→설정→앨범모달 순회. 스크린샷(스크래치패드 `uishots/`): 홈 로딩/로드(16058장 히어로+streak), 정리 다크 라이트박스(사진 히어로+하단 패널), 설정 그룹 카드, 앨범 모달, 홈 다크. **실제 commit/스와이프/칩 탭 미실행**(소유자 실사진 보호) — 정리 화면은 렌더 확인까지만, 앨범 모달은 열기만 하고 미선택 dismiss. 완료 화면은 직접 진입(실 commit) 불가라 코드 리뷰+위젯 테스트로 대체.
+
+---
+
+## K. 단건 삭제 UI (F-14b'·F-14c', 2026-07-07, feature-builder)
+
+> SSOT = `06_architect_delete.md §0`(확정 개정판) + `02_integrator_notes.md §G`(core 계약). core/·android/ 무수정 — §G 계약만 소비.
+> 게이트: `flutter analyze` **No issues** · `flutter test` **77 passed**(기존 63 + 신규 14) · `flutter build apk --debug` **성공**.
+
+### K-1. SortController (F-14b')
+- `deleteCurrent()` (`sort_controller.dart:181-206`) — `deleteAsset` `true` 시 `deletionRepository.logDeletion()` 1회 + `analytics.logAssetDeleted()` + `index++` + 세션 `deletedCount++`. `markProcessed` 미호출(DEL-4'). `false` 면 상태 무변경(카드 유지) — 스낵은 화면이 반환값으로 처리(코드베이스 관례: `commit()`처럼 async 반환→화면 스낵). **history 미기록** = undo 미적용(§0.2).
+- `SortState.deletedCount` 필드 추가(세션 누계, 배정 pending 과 독립).
+- `CommitOutcome.deletedCount` 추가 + `isNoop` 에 `deletedCount==0` 편입 → **삭제만 한 세션도 완료 화면으로** 전이(기존 `_finish` 라우팅이 isNoop 기반이라 화면 수정 없이 동작).
+- `commit()`: pending 비어도 `deletedCount>0` 이면 outcome 에 실어 보내고 `sort_session_complete`(deleted_count 포함) 발화. remaining = 초기큐 − 배정성공 − 삭제성공.
+
+### K-2. 정리 화면 UI (F-14c')
+- 하단 액션행 **좌단 저강도 삭제 버튼**(`sort_screen.dart` `_SortReady` action Row) — `delete_outline`·`error`색·고스트(alpha 0.10)·`subdued`(작게, `_RoundAction`에 subdued 변형 추가). **`showDelete = photoServiceProvider.supportsDeletion`** 일 때만 렌더(§G.2 1차 방어). 배정(우단·강조)과 대각 배치.
+- `_onDelete` (`sort_screen.dart`) — 최초 1회 교육 시트 → [삭제] 진행 시에만 `deleteCurrent` + `setSeenDeleteIntro()`. 시트 여는 사이 카드 전환 방어(current.id 재확인). `false` 반환 시 스낵 **"삭제하지 못했어요"**(D5-6). `_deleting` 재진입 가드.
+- **교육 시트** `delete_intro_sheet.dart`(신규) — 플랫폼 분기 문구(iOS "최근 삭제됨 30일" / 그 외 "바로 영구 삭제") + 공통 "원본은 폰 밖으로 안 나가요". [삭제](error색 FilledButton)/[취소]. 양 테마 자동(colorScheme). 풀너비 SizedBox 옵트인(테마 minimumSize 무한너비 금지 준수).
+- 플래그 `hasSeenDeleteIntro`(`settings_store.dart`, key `seen_delete_intro`) — **진행([삭제]) 시에만** 저장. 취소 시 재노출(교육 목적은 실제 진행으로 충족). ← 설계가 명시 안 한 UX 판단, QA 확인 요망.
+
+### K-3. 완료 화면 (F-14c')
+- 총계 문구 `_totalLine`(`done_screen.dart`): 배정+삭제 혼합 "N장을 정리했어요"(총량) / 삭제만 "M장을 삭제했어요" / 삭제 0 "N장을 앨범으로 옮겼어요"(기존 유지·하위호환).
+- 분해 라인 "앨범 N장 · 삭제 M장" — **배정·삭제 둘 다>0 일 때만**(휴지통 표현 금지). 삭제만 한 세션은 총계 문구가 대신하므로 분해 생략.
+- 앨범 위치 안내(삼성 갤러리)는 `successCount>0` 게이트 유지 → 삭제만 한 세션엔 숨김.
+- **CompletionAdSlot 위치 불변**(streak 아래 그대로). `recordFirstSortDateIfAbsent` 게이트를 `success>0 || deleted>0` 로 확장(삭제만 한 완료 세션도 광고 시계 시작 — 완료=정리 세션 성립. QA/오케 확인 여지).
+
+### K-4. 분석 (F-14c')
+- `AnalyticsService.logAssetDeleted()` + `AnalyticsEvents.assetDeleted='asset_deleted'`(속성 없음) 추가. Local·Firebase 두 구현 동시 반영.
+- `logSortSessionComplete` 에 `required int deletedCount` + `AnalyticsParams.deletedCount='deleted_count'` 추가(단일출처 상수). 시그니처 변경으로 `analytics_test`·`firebase_analytics_service_test` 의 fake/호출 갱신.
+
+### K-5. 테스트 (신규 `test/delete_ui_test.dart`, 14건)
+- 컨트롤러: 삭제 성공(true·index++·deletedCount++·logDeletion·asset_deleted)·실패(false·무변경)·undo 무영향·삭제만 세션 commit outcome.
+- 위젯: supportsDeletion true/false 버튼 노출·최초 교육 시트·[삭제]진행·[취소]·재사용 무마찰·실패 스낵.
+- 완료 화면: 혼합 총계+분해·삭제만 문구·삭제0 기존문구.
+
+### K-6. 잔여 실기기 확인(F-14d' 인계 — 호스트 미검증)
+- Android API30+ 삭제 동의창 1회·영구삭제 후 큐 미재등장(DEL-3'), 삭제+배정 세션 동의창 수.
+- iOS "최근 삭제됨" 이동·복원 재등장(DEL-5').
+- 다크 라이트박스(kSortCanvas) 위 error색 삭제 버튼 대비 실측(§2.7).
+- 교육 시트 [취소]→재노출 UX·`recordFirstSortDate` 삭제만 세션 확장의 광고 게이트 영향 승인.

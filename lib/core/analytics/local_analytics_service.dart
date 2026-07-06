@@ -71,13 +71,18 @@ class LocalAnalyticsService implements AnalyticsService {
   void logAssetSkipped() => _log(AnalyticsEvents.assetSkipped);
 
   @override
+  void logAssetDeleted() => _log(AnalyticsEvents.assetDeleted);
+
+  @override
   void logSortSessionComplete({
     required int processedCount,
     required int remainingUnclassified,
+    required int deletedCount,
   }) =>
       _log(AnalyticsEvents.sortSessionComplete, {
         AnalyticsParams.processedCount: processedCount,
         AnalyticsParams.remainingUnclassified: remainingUnclassified,
+        AnalyticsParams.deletedCount: deletedCount,
       });
 
   @override

@@ -31,6 +31,7 @@ class SortState {
     this.albums = const [],
     this.index = 0,
     this.pendingCount = 0,
+    this.deletedCount = 0,
     this.canUndo = false,
   });
 
@@ -39,6 +40,12 @@ class SortState {
   final List<AlbumRef> albums;
   final int index;
   final int pendingCount;
+
+  /// 이번 세션에서 즉시 삭제에 성공한 자산 수(D5). 삭제는 stage→commit 이 아니라
+  /// 탭 즉시 실행되므로 배정 예약(pendingCount)과 독립적인 세션 누계로 유지되며,
+  /// 완료 화면 총계·분해에 합산된다.
+  final int deletedCount;
+
   final bool canUndo;
 
   /// 현재 카드 자산(큐 소진 시 null).
@@ -54,6 +61,7 @@ class SortState {
     List<AlbumRef>? albums,
     int? index,
     int? pendingCount,
+    int? deletedCount,
     bool? canUndo,
   }) {
     return SortState(
@@ -62,6 +70,7 @@ class SortState {
       albums: albums ?? this.albums,
       index: index ?? this.index,
       pendingCount: pendingCount ?? this.pendingCount,
+      deletedCount: deletedCount ?? this.deletedCount,
       canUndo: canUndo ?? this.canUndo,
     );
   }
@@ -74,13 +83,21 @@ class CommitOutcome {
     required this.successCount,
     required this.failedCount,
     required this.cancelled,
+    this.deletedCount = 0,
   });
 
   final int successCount;
   final int failedCount;
   final bool cancelled;
 
-  bool get isNoop => successCount == 0 && failedCount == 0 && !cancelled;
+  /// 이번 세션에서 즉시 삭제에 성공한 자산 수(D5). 배정 commit 과 무관하게 세션
+  /// 누계로 전달되며, 완료 화면 총계·분해에 쓰인다.
+  final int deletedCount;
+
+  /// 완료 화면으로 보여줄 실반영이 하나도 없는 상태. 삭제분도 성취이므로 포함한다
+  /// (삭제만 한 세션도 완료 화면으로 가야 하기 때문).
+  bool get isNoop =>
+      successCount == 0 && failedCount == 0 && deletedCount == 0 && !cancelled;
 }
 
 /// 정리(스와이프) 컨트롤러 — stage → commit → (성공분만) markProcessed 흐름.
@@ -171,6 +188,32 @@ class SortController extends Notifier<SortState> {
     state = state.copyWith(index: state.index + 1, canUndo: true);
   }
 
+  /// 현재 자산을 즉시·영구 삭제(D5, F-14c'). OS 동의창을 포함하며, 배정과 달리
+  /// stage→commit 이 아니라 탭 즉시 실행된다.
+  ///
+  /// 반환 `true` = 삭제 성공(카드 제거·다음 카드로 진행), `false` = 취소 또는 실패
+  /// (카드 유지). 호출측(화면)은 `false` 면 "삭제하지 못했어요" 스낵을 띄운다(D5-6).
+  ///
+  /// **history 에 기록하지 않는다** — 삭제는 영구·즉시라 앱 내 되돌리기가 없다
+  /// (OS 동의창이 유일 확인 지점, §0.2). 따라서 [undo] 는 삭제에 영향을 주지 않는다.
+  Future<bool> deleteCurrent() async {
+    final asset = state.current;
+    if (asset == null) return false;
+    final photo = ref.read(photoServiceProvider);
+    final ok = await photo.deleteAsset(asset);
+    if (!ok) return false;
+    // 삭제 성공: streak 원천에 기록 + 분석 + 세션 누계·카드 진행.
+    // markProcessed 는 호출하지 않는다(삭제 자산은 ProcessedAsset 미기록, DEL-4').
+    // 서비스가 _pending·스캔 캐시 정리는 내부에서 수행하므로 여기선 불필요(§G.3).
+    await ref.read(deletionRepositoryProvider).logDeletion();
+    ref.read(analyticsServiceProvider).logAssetDeleted();
+    state = state.copyWith(
+      index: state.index + 1,
+      deletedCount: state.deletedCount + 1,
+    );
+    return true;
+  }
+
   /// 방금 스와이프 되돌리기(commit 전이라 안전). stage 예약도 취소.
   void undo() {
     if (_history.isEmpty) return;
@@ -193,12 +236,29 @@ class SortController extends Notifier<SortState> {
     final photo = ref.read(photoServiceProvider);
     final processed = ref.read(processedRepositoryProvider);
 
+    final analytics = ref.read(analyticsServiceProvider);
+
     if (photo.pendingAssignments().isEmpty) {
-      return const CommitOutcome(
-          successCount: 0, failedCount: 0, cancelled: false);
+      // 배정 예약은 없다. 단, 세션 삭제분이 있으면 "삭제만 한 세션"으로 완료
+      // 화면에 가야 하므로 outcome 에 deletedCount 를 실어 보내고 완료 이벤트도
+      // 남긴다(§0.2, DEL-8). 삭제도 없으면 순수 no-op.
+      final outcome = CommitOutcome(
+        successCount: 0,
+        failedCount: 0,
+        cancelled: false,
+        deletedCount: state.deletedCount,
+      );
+      if (!outcome.isNoop) {
+        final remaining = _sessionInitialQueueSize - outcome.deletedCount;
+        analytics.logSortSessionComplete(
+          processedCount: 0,
+          remainingUnclassified: remaining < 0 ? 0 : remaining,
+          deletedCount: outcome.deletedCount,
+        );
+      }
+      return outcome;
     }
 
-    final analytics = ref.read(analyticsServiceProvider);
     state = state.copyWith(status: SortStatus.committing);
     try {
       final result = await photo.commitAssignments();
@@ -224,24 +284,30 @@ class SortController extends Notifier<SortState> {
         successCount: result.succeeded.length,
         failedCount: result.failed.length,
         cancelled: result.cancelled,
+        deletedCount: state.deletedCount,
       );
       // 분석: 정리 세션 완료 — 완료 화면으로 전이하는 실반영 커밋에서만
-      // (취소·noop 은 완료 화면으로 가지 않으므로 제외). 처리수 + 남은 미분류수.
+      // (취소·noop 은 완료 화면으로 가지 않으므로 제외). 처리수 + 남은 미분류수 +
+      // 세션 삭제수(D5). 삭제분도 큐를 떠났으므로 remaining 에서 함께 차감한다.
       if (!outcome.cancelled && !outcome.isNoop) {
-        final remaining = _sessionInitialQueueSize - outcome.successCount;
+        final remaining = _sessionInitialQueueSize -
+            outcome.successCount -
+            outcome.deletedCount;
         analytics.logSortSessionComplete(
           processedCount: outcome.successCount,
           remainingUnclassified: remaining < 0 ? 0 : remaining,
+          deletedCount: outcome.deletedCount,
         );
       }
       return outcome;
     } catch (_) {
       state = state.copyWith(status: SortStatus.ready);
-      // 예외는 실패로 간주(예약 유지).
+      // 예외는 실패로 간주(예약 유지). 세션 삭제분은 이미 반영됐으므로 함께 전달.
       return CommitOutcome(
         successCount: 0,
         failedCount: photo.pendingAssignments().length,
         cancelled: false,
+        deletedCount: state.deletedCount,
       );
     }
   }

@@ -68,13 +68,19 @@ class RecordingAnalyticsService implements AnalyticsService {
       events.add(const AnalyticsEvent(AnalyticsEvents.assetSkipped));
 
   @override
+  void logAssetDeleted() =>
+      events.add(const AnalyticsEvent(AnalyticsEvents.assetDeleted));
+
+  @override
   void logSortSessionComplete({
     required int processedCount,
     required int remainingUnclassified,
+    required int deletedCount,
   }) =>
       events.add(AnalyticsEvent(AnalyticsEvents.sortSessionComplete, {
         AnalyticsParams.processedCount: processedCount,
         AnalyticsParams.remainingUnclassified: remainingUnclassified,
+        AnalyticsParams.deletedCount: deletedCount,
       }));
 
   @override

@@ -172,3 +172,63 @@
 ### 7.7 커밋 가능 여부 판정
 - **커밋 `0984709`(이미 커밋)**: 게이트 클린 + 실기기 3건 PASS + 경계·불변식(C-4/C-5/캐시/프라이버시) 전부 정합. **문제 없음.**
 - **미커밋 working tree(UI 개편)**: 게이트 44/44 + analyze 클린, 경계면·핵심 불변식(광고 위치·판별 기준·프라이버시·캐시) 전원 유지, 회귀 함정(Size.fromHeight·autoDispose) 회피 확인. **커밋 가능**. 단 **D-1(MEDIUM, 다크 대비) 커밋 전 수정 권장** — `Colors.white`→`scheme.onPrimary/onTertiary` 3지점 1줄씩, 비차단이나 트리비얼 픽스. HIGH 이슈 없음.
+
+---
+
+## §8. D5 단건 삭제 검증 (2026-07-07, qa-verifier)
+
+> 대상: 커밋 `74e3848`(core: deleteAsset·supportsDeletion·DeletionLogs v2·streak 합집합) + 미커밋 working tree(SortController.deleteCurrent, 삭제 버튼, 교육 시트, 완료 화면 총계/분해, 분석). SSOT = `06_architect_delete.md §0`(§1~8 폐기·기록보존) + §9, 계약 = `02_integrator_notes.md §G`, 구현 = `02_builder_notes.md §K`.
+> 방법: 게이트 직접 실행 + 경계면 교차대조(core 반환 ↔ 컨트롤러 ↔ UI) + 불변식 정적 검증. 실기기 미연결 → 플랫폼 채널 경로는 소스 대조로 폴백(§8.6에 실기기 필수 목록 명시).
+
+### 8.0 품질 게이트 (직접 실행)
+| 게이트 | 결과 |
+|--------|------|
+| `flutter analyze` | **No issues found!** (3.3s) |
+| `flutter test` | **All tests passed! — 77/77** (delete_ui_test 14건 포함) |
+
+기대치(77/77)와 일치. 게이트 클린.
+
+### 8.1 불변식 코드 검증 (DEL-1'~8)
+| ID | 판정 | 근거(파일:라인) |
+|----|------|-----------------|
+| DEL-1' (성공 전 원본·큐 보존) | **PASS** | `sort_controller.dart:203-214` — `deleteAsset` 반환 `false` 면 `return false` 로 **상태 무변경**(index·deletedCount·카드 유지). `applyDeletionResult`(`photo_manager_photo_service.dart:248-255`)도 `ok` 일 때만 `_pending`·캐시 정리. OS 동의창 미완료(취소) = 빈 반환 = 보존. |
+| DEL-2' (동의창 없는 삭제 경로 부재 / API<30 2중 방어) | **PASS** | 1차: UI `showDelete: supportsDeletion`(`sort_screen.dart:196`, Android=SDK≥30). 2차: `deleteAsset`(`:218-225`)가 Android SDK<30·기타 플랫폼이면 **플랫폼 호출 없이 즉시 false**. 실삭제는 `deleteWithIds`(`:232`)=API30+ `createDeleteRequest`(OS 동의창) 경로만 도달. `supportsDeletion` 미조회 기본값 false(안전). |
+| DEL-3'/4 (ProcessedAsset 미기록·markProcessed 미호출) | **PASS** | `deleteCurrent`(`:199-215`)에 `markProcessed` 호출 없음. `logDeletion()`+analytics+index++ 만. streak 원천 union(`processed_repository.dart:98-103`)이 processed 테이블 무오염 확인. |
+| DEL-6' (pending 배정 독립·삭제 성공 시 pending 제거) | **PASS** | `applyDeletionResult`(`:250-252`) 성공 시 `_pending.remove(assetId)` — 방어적 제거로 "삭제된 자산이 배정 커밋에 잔존" 원천 차단. |
+| DEL-7' (삭제 1건=동의창 1회, commit 동의창=이동만) | **PASS(소스)** | `deleteAsset`가 `deleteWithIds([단일 id])`(`:232`) → createDeleteRequest 1회. commit 경로(`_commitAndroid` moveToAlbums)와 완전 독립. 동의창 실횟수는 실기기 대기(§8.6). |
+| DEL-8 (streak = 처리일 ∪ 삭제일) | **PASS** | `streakDays`(`processed_repository.dart:98-103`) = `computeStreak([...processed, ...deleted])`. `logDeletion`(`deletion_dao.dart:16-20`)이 삭제 성공마다 `deletedAt` append → 삭제만 한 날도 인정. done_screen streak future가 이 union 소비. |
+
+### 8.2 경계면 교차대조
+- **features → §G 계약만 소비 / photo_manager 타입 누출 0**: `lib/features/` 전체에서 `photo_manager`·`AssetEntity`·`PhotoManager` import **0건**(grep 확인). UI는 `deleteAsset`(bool)·`supportsDeletion`(bool getter)만 사용. **PASS.**
+- **deletedCount 전파 CommitOutcome→done_screen**: `SortState.deletedCount`(deleteCurrent에서 ++) → `commit()`가 3경로(pending-empty `:249`, 정상 `:287`, catch `:310`) 모두 `CommitOutcome.deletedCount`에 실음 → `done_screen._totalLine`/분해(`done_screen.dart:42-50,109`)가 소비. **정확 전파.** PASS.
+- **isNoop 편입 → 삭제만 세션 완료 전이**: `isNoop`(`:99-100`)에 `deletedCount==0` 편입. pending-empty & deletedCount>0 → isNoop=false → `_finish`가 `context.go('/done')`(`sort_screen.dart:60`). **삭제만 한 세션도 완료 화면 도달.** 단 진입 트리거는 큐 소진 자동 commit(정리 버튼은 pendingCount>0 게이트라 삭제만 세션에선 비활성) — 설계 정합. PASS.
+- **sort_session_complete(deleted_count) 발화**: pending-empty branch(`:251-258`)에서 `!isNoop` 시 `logSortSessionComplete(processedCount:0, remaining:초기큐-deleted, deletedCount:)`. 정상 branch(`:292-301`)도 deleted 합산. 상수 `AnalyticsParams.deletedCount='deleted_count'` 단일출처, Local·Firebase 양 구현 매핑(`firebase_analytics_service.dart:100,111`) 확인. PASS.
+
+### 8.3 기존 불변식 회귀
+| 항목 | 판정 | 근거 |
+|------|------|------|
+| 광고 위치(CompletionAdSlot 안 밀림) | **PASS** | `done_screen.dart:197` streak 카드 **아래** 유지. sort_screen은 CompletionAdSlot/AdGate 미참조 → 정리 흐름 내 광고 0(구조적 보장). |
+| 미분류=처리 ID 판별 | **PASS** | `loadUnclassifiedQueue`(`:128,141`) `processedIdSet` 대조 유지. 삭제는 processed 미기록이나 Android=MediaStore 소멸·iOS=최근삭제됨 제외로 큐 미재등장(소스), `applyDeletionResult`가 `_queueCache=null`(`:253`)로 명시 무효화 + total 감소로 지문 자가무효화 이중. |
+| 프라이버시 | **PASS** | `DeletionLogs` 스키마(`app_database.dart:46-52`)에 자산 id **없음**(deletedAt만). `asset_deleted` 이벤트 속성 없음(`logAssetDeleted`). `deleteAsset`는 id 리스트만 전달(원본 바이트 미접근). "휴지통" 문자열은 금지 주석 1곳뿐(사용자 노출 0). |
+| Size.fromHeight 회귀 | **PASS** | 교육 시트·완료 화면 버튼 전부 `SizedBox(width:double.infinity)` 옵트인(`delete_intro_sheet.dart:74,86`). 버튼 minimumSize에 Size.fromHeight 미사용(AppBar bottom PreferredSize의 Size.fromHeight는 무관·정상). |
+| autoDispose 재진입 | **PASS** | `deletedCount`는 `SortState` 필드 → `build()` 재실행 시 0으로 리셋. 신규 pub 의존성 0. |
+
+### 8.4 판단 2건 타당성 (§K 기록)
+- **교육 시트 [취소] 시 플래그 미설정(재노출)** — **타당.** `_onDelete`(`sort_screen.dart:95-98`)는 `proceed==true` 일 때만 `setSeenDeleteIntro()`. 교육의 목적은 "실제 삭제 진행 전 이해 확인"이므로, 취소=미진행 시 다음 시도에 재노출이 옳다. D5-6·§0.2와 정합. (부수: [삭제] 진행 후 OS 동의창을 취소해도 플래그는 서 있음 — 이미 교육 확인을 거쳤으므로 의도된 동작.)
+- **recordFirstSortDateIfAbsent가 삭제만 세션에도 발동** — **타당·정합.** `done_screen.dart:35`가 `successCount>0 || deletedCount>0` 로 확장. DEL-8이 "삭제만 한 날도 정리 세션으로 인정"하므로, 완료 화면에 도달한 삭제만 세션은 진짜 "첫 정리"다. D3(첫 정리일+7일 광고 게이트)의 의미와 일관 — 습관이 붙은 첫 실사용일부터 광고 시계 시작. 상충 없음.
+
+### 8.5 UI 디테일
+- **다크 라이트박스 위 error색 삭제 버튼 대비**: `_RoundAction` subdued(`sort_screen.dart:434-436`)가 `error.withValues(alpha:0.10)` 고스트 배경 + `error` 전경. 라이트박스(`kSortCanvas`=웜 차콜) 위에서 error(밝은 산호빛 계열)는 대비 확보 예상이나 **정확 대비값은 실기기 육안 필요**(§8.6). §7.6 D-1(다크 흰색 전경) 계열 주의는 삭제 버튼엔 비해당(전경이 error색). 
+- **교육 시트 양 테마**: `delete_intro_sheet.dart` 전부 `Theme.of(context).colorScheme` 파생 → 양 테마 자동. 하드코딩 색 없음. PASS.
+- **"휴지통" 표현 부재**: `lib/` grep → 금지 주석 1곳 외 사용자 문구 0. PASS.
+
+### 8.6 실기기 필수 확인 목록 (호스트 미검증 → F-14d' 인계)
+1. **Android API30+**: 삭제 버튼 탭 → OS 삭제 동의창 **1회** → 승인 시 영구삭제 → 재스캔 시 큐 **미재등장**(DEL-3'). 삭제+배정 혼합 세션 동의창 수 = 삭제 탭수 + 배정 commit 1.
+2. **iOS**: `deleteWithIds` 후 "최근 삭제됨" 이동 + onlyAll 큐 미재등장(DEL-3', 소스상 PASS) / 30일 내 복원 시 재등장(DEL-5' 재정리 기회).
+3. **Android API<30 기기**: 삭제 버튼 미노출(supportsDeletion=false) 육안 확인(minSdk=24라 실재 가능 레인지).
+4. **다크/라이트 양 테마** 정리 화면에서 삭제 버튼·교육 시트 대비 육안.
+5. 교육 시트 [취소]→재노출, [삭제]→무마찰 재사용 실기 흐름.
+
+### 8.7 커밋 가능 여부 판정
+- **커밋 `74e3848`(core, 이미 커밋)**: 게이트 클린, DEL-3'/4/8·프라이버시·스키마 v2 마이그레이션(`onUpgrade` createTable) 정합. **문제 없음.**
+- **미커밋 working tree(컨트롤러·UI·완료·분석)**: analyze 클린 + test 77/77, 경계면(계약 소비·타입 누출 0·deletedCount 전파·이벤트 발화) 전원 정합, 불변식 DEL-1'~8 소스상 PASS, 기존 불변식(광고 위치·판별 기준·프라이버시·Size.fromHeight·autoDispose) 회귀 0. 판단 2건 타당. **커밋 가능.** HIGH/블로킹 이슈 없음. 잔여는 §8.6 실기기 항목(플랫폼 채널 경로 특성상 호스트 검증 불가)뿐 — 릴리스 전 게이트로 병렬 처리.
