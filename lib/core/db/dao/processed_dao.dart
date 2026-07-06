@@ -20,6 +20,15 @@ class ProcessedDao extends DatabaseAccessor<AppDatabase>
     return rows.map((r) => r.read(processedAssets.id)!).toSet();
   }
 
+  /// 처리된 자산 총 개수(COUNT). 미분류 큐 캐시의 무효화 신호로 사용(전체 집합을
+  /// 매번 로드하지 않고 값이 바뀌었는지만 싸게 확인).
+  Future<int> processedCount() async {
+    final countExpr = processedAssets.id.count();
+    final query = selectOnly(processedAssets)..addColumns([countExpr]);
+    final row = await query.getSingle();
+    return row.read(countExpr) ?? 0;
+  }
+
   /// 마지막 처리 시각(없으면 null). 성능 프리필터·streak 계산에 사용.
   Future<DateTime?> lastProcessedAt() async {
     final maxExpr = processedAssets.processedAt.max();

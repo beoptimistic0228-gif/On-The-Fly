@@ -10,6 +10,9 @@ abstract class ProcessedRepository {
   /// 마지막 처리 시각(없으면 null).
   Future<DateTime?> lastProcessedAt();
 
+  /// 처리된 자산 총 개수(미분류 큐 캐시 무효화 신호).
+  Future<int> processedCount();
+
   /// commit 성공분 1건 기록. **이동 후 최종 [assetId]**로 호출(datamodel §3.1.1).
   Future<void> markProcessed({
     required String assetId,
@@ -35,6 +38,9 @@ class DriftProcessedRepository implements ProcessedRepository {
 
   @override
   Future<DateTime?> lastProcessedAt() => _dao.lastProcessedAt();
+
+  @override
+  Future<int> processedCount() => _dao.processedCount();
 
   @override
   Future<void> markProcessed({

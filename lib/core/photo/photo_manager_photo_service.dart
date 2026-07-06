@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:photo_manager/photo_manager.dart';
 
 import '../db/album_repository.dart';
@@ -23,9 +24,19 @@ class PhotoManagerPhotoService implements PhotoService {
   final ProcessedRepository _processedRepo;
   final AlbumRepository _albumRepo;
 
+  /// 네이티브 배치 이동 채널(Android C-5/C-4). 전체 pending 을 단일 쓰기 동의로 이동.
+  /// android/app .../MediaMoveHandler.kt 와 짝. iOS/데스크톱에선 사용하지 않는다.
+  static const MethodChannel _mediaChannel =
+      MethodChannel('on_the_fly/media_store');
+
   /// stage 예약 큐(메모리). key = assetId → 단일 앨범 배정(다중 배정 없음).
   /// insertion order 유지(Dart Map) → "대기 중" 순서 표시에 사용.
   final Map<String, PendingAssignment> _pending = <String, PendingAssignment>{};
+
+  /// 미분류 큐 스캔 캐시(성능). 관측 신호(총 자산수·처리 집합)가 그대로면 재스캔을
+  /// 건너뛴다. 신호가 바뀌면(신규 자산·commit·삭제) 무효화되어 정확한 재로드가 돈다
+  /// → "카운트 근사, 큐는 정확" 불변식 유지. 앱 수명(싱글턴) 동안만 유효(콜드스타트 1회 스캔).
+  _QueueScanCache? _queueCache;
 
   final Random _random = Random();
 
@@ -63,8 +74,37 @@ class PhotoManagerPhotoService implements PhotoService {
       onlyAll: true,
       type: RequestType.common, // 사진 + 영상
     );
-    if (paths.isEmpty) return const <AssetRef>[];
+    if (paths.isEmpty) {
+      _queueCache = const _QueueScanCache(
+        _ScanSignature(total: 0, processedCount: 0, lastProcessedMicros: null),
+        <AssetRef>[],
+      );
+      return const <AssetRef>[];
+    }
     final all = paths.first;
+
+    // ── 성능(재스캔 회피): 전체 자산수 + 처리 집합의 "지문"이 지난 로드와 같으면
+    // 스캔 결과도 같으므로 캐시를 그대로 돌려준다. 이 값들은 모두 싼 카운트 쿼리다
+    // (assetCountAsync = 네이티브 COUNT, processedCount = SQL COUNT). 16k 페이징
+    // (수십 초)을 홈 재진입/정리 재진입마다 반복하지 않게 하는 게 목적이다.
+    //
+    // 왜 안전한가(불변식): 신규 자산이 들어오면 total 이, commit/삭제가 있으면
+    // processedCount·lastProcessedAt 가 바뀌어 캐시 미스 → 정확한 재스캔이 돈다.
+    // 즉 관측 가능한 변화가 있으면 항상 실제 로드다("큐는 정확"). 총 개수가 동일한
+    // 외부 삭제+추가(동시 발생·commit 없음)라는 병적 케이스만 근사이며, 다음 카운트
+    // 변화에서 자가 치유된다("카운트는 근사 허용"). 설계 근거: 02_integrator_notes 한계 D.
+    final total = await all.assetCountAsync;
+    final processedCount = await _processedRepo.processedCount();
+    final lastProcessedAt = await _processedRepo.lastProcessedAt();
+    final signature = _ScanSignature(
+      total: total,
+      processedCount: processedCount,
+      lastProcessedMicros: lastProcessedAt?.microsecondsSinceEpoch,
+    );
+    final cache = _queueCache;
+    if (cache != null && cache.signature == signature) {
+      return cache.queue;
+    }
 
     // ★ 최종 판별 기준 = 처리 ID 집합(datamodel §3). OS 앨범 소속 아님.
     final processedIds = await _processedRepo.processedIdSet();
@@ -93,7 +133,9 @@ class PhotoManagerPhotoService implements PhotoService {
       if (assets.length < pageSize) break;
       page++;
     }
-    return result;
+    final frozen = List<AssetRef>.unmodifiable(result);
+    _queueCache = _QueueScanCache(signature, frozen);
+    return frozen;
   }
 
   // ── stage / unstage / pending ───────────────────────────────────────
@@ -122,17 +164,23 @@ class PhotoManagerPhotoService implements PhotoService {
     if (pending.isEmpty) {
       return const BatchAssignResult(succeeded: [], failed: []);
     }
+    final BatchAssignResult result;
     if (Platform.isIOS || Platform.isMacOS) {
-      return _commitDarwin(pending);
+      result = await _commitDarwin(pending);
+    } else if (Platform.isAndroid) {
+      result = await _commitAndroid(pending);
+    } else {
+      // 미지원 플랫폼: 아무 것도 반영하지 않고 실패로 표시(큐 유지).
+      result = BatchAssignResult(
+        succeeded: const [],
+        failed: pending.map((e) => e.assetId).toList(),
+      );
     }
-    if (Platform.isAndroid) {
-      return _commitAndroid(pending);
+    // 처리분이 생겼으면 미분류 큐 캐시를 버린다(다음 로드는 정확한 재스캔).
+    if (result.succeeded.isNotEmpty) {
+      _queueCache = null;
     }
-    // 미지원 플랫폼: 아무 것도 반영하지 않고 실패로 표시(큐 유지).
-    return BatchAssignResult(
-      succeeded: const [],
-      failed: pending.map((e) => e.assetId).toList(),
-    );
+    return result;
   }
 
   /// iOS/macOS: 앨범 태깅(원본 타임라인 유지). 동의창 없음, id 불변.
@@ -197,8 +245,107 @@ class PhotoManagerPhotoService implements PhotoService {
     return BatchAssignResult(succeeded: succeeded, failed: failed);
   }
 
-  /// Android: 앨범별로 묶어 배치 이동(동의창 1회). 이동 후 id 재발급 대응.
+  /// Android: **전체 pending 을 단일 쓰기 동의로** 이동(QA C-5). 앨범별 이동을
+  /// 앨범 수만큼 동의창을 띄우던 것을, 네이티브 채널이 `createWriteRequest` 한 번으로
+  /// 전량 승인받은 뒤 앨범별 RELATIVE_PATH 갱신을 추가 동의 없이 수행한다.
+  ///
+  /// 취소(QA C-4): 채널이 RESULT_CANCELED 를 명시 반환 → `cancelled=true`(예약 유지,
+  /// failed 0). 이동 후 id 재발급은 기존 [_resolveAndroidFinalIds] 로 대응.
+  ///
+  /// API<30(createWriteRequest 미지원)·채널 미배선 시 [_commitAndroidLegacy] 로 폴백.
   Future<BatchAssignResult> _commitAndroid(
+    List<PendingAssignment> pending,
+  ) async {
+    // 앨범별 그룹(이동 후 최종 id 해석에 필요) + 전체 이동 계획(flat) 작성.
+    final byAlbum = <String, List<PendingAssignment>>{};
+    for (final pa in pending) {
+      byAlbum.putIfAbsent(pa.album.id, () => <PendingAssignment>[]).add(pa);
+    }
+
+    final entityById = <String, AssetEntity>{};
+    final failedResolve = <String>[];
+    final moves = <Map<String, Object>>[];
+    for (final pa in pending) {
+      final entity = await AssetEntity.fromId(pa.assetId);
+      if (entity == null) {
+        failedResolve.add(pa.assetId); // 이미 라이브러리에 없음 → 실패(큐 유지).
+        continue;
+      }
+      entityById[pa.assetId] = entity;
+      moves.add(<String, Object>{
+        'id': pa.assetId,
+        'mediaType': pa.mediaType, // 0=사진/1=영상 → 네이티브 URI 구성.
+        'relativePath': _androidTargetPath(pa.album),
+      });
+    }
+    if (moves.isEmpty) {
+      // 해석 가능한 자산 0 → 전량 실패(큐 유지). 취소 아님.
+      return BatchAssignResult(succeeded: const [], failed: failedResolve);
+    }
+
+    // ★ 단일 createWriteRequest → 앨범별 이동(추가 동의 없음).
+    final MoveChannelResult res;
+    try {
+      final raw =
+          await _mediaChannel.invokeMethod<Object?>('moveToAlbums', {
+        'moves': moves,
+      });
+      res = parseMoveChannelResult(raw);
+    } catch (_) {
+      // 채널 예외(미배선·액티비티 없음 등) → 레거시 per-album 경로로 폴백(동작 보장).
+      return _commitAndroidLegacy(pending);
+    }
+
+    if (res.unsupported) {
+      // API<30: createWriteRequest 미지원 → 레거시(단일 targetPath 당 동의 1회).
+      return _commitAndroidLegacy(pending);
+    }
+    if (res.cancelled) {
+      // C-4: 사용자가 동의창 취소 → 전량 예약 유지, cancelled=true(failed 0).
+      return const BatchAssignResult(
+          succeeded: [], failed: [], cancelled: true);
+    }
+
+    // 부분 성공: moved(갱신 성공) 만 최종 id 해석 후 확정.
+    final movedSet = res.moved.toSet();
+    final succeeded = <AssignedAsset>[];
+    final failed = <String>[...failedResolve, ...res.failed];
+
+    for (final group in byAlbum.values) {
+      final album = group.first.album;
+      final movedGroup =
+          group.where((pa) => movedSet.contains(pa.assetId)).toList();
+      if (movedGroup.isEmpty) continue;
+      final movedEntities =
+          movedGroup.map((pa) => entityById[pa.assetId]!).toList();
+      // 이동 후 최종 id 해석(datamodel §3.1.1). RELATIVE_PATH 갱신은 대개 id 를
+      // 유지하나, 삼성 등 일부 OEM 은 재발급하므로 지문 매칭으로 대응(FIX-2b).
+      final finalIds = await _resolveAndroidFinalIds(album, movedEntities);
+      for (var i = 0; i < movedGroup.length; i++) {
+        final pa = movedGroup[i];
+        final finalId = finalIds[i];
+        if (finalId != null) {
+          succeeded.add(
+            AssignedAsset(
+              finalAssetId: finalId,
+              albumId: album.id,
+              mediaType: pa.mediaType,
+            ),
+          );
+          _pending.remove(pa.assetId);
+        } else {
+          // 재발급 매칭 불확실 → 성공 아님. _pending 유지(재시도), 다음 큐 재등장 감수.
+          failed.add(pa.assetId);
+        }
+      }
+    }
+    return BatchAssignResult(succeeded: succeeded, failed: failed);
+  }
+
+  /// (레거시/폴백) Android 앨범별 배치 이동 — 앨범 수만큼 동의창이 뜬다.
+  /// API<30(단일 batch write request 미지원) 또는 네이티브 채널 미배선 시에만 쓴다.
+  /// C-5 를 해소하지 못하므로 정상 경로는 [_commitAndroid] 이며 이건 안전망이다.
+  Future<BatchAssignResult> _commitAndroidLegacy(
     List<PendingAssignment> pending,
   ) async {
     final succeeded = <AssignedAsset>[];
@@ -439,6 +586,89 @@ class PhotoManagerPhotoService implements PhotoService {
     final rnd = _random.nextInt(0x7fffffff);
     return 'alb_${ts}_$rnd';
   }
+}
+
+/// 미분류 큐 스캔 캐시의 "지문". 전체 자산수와 처리 집합 상태가 모두 같으면
+/// 미분류 스캔 결과도 동일하므로 재스캔을 건너뛴다(성능). 값 동등성으로 비교.
+@immutable
+class _ScanSignature {
+  const _ScanSignature({
+    required this.total,
+    required this.processedCount,
+    required this.lastProcessedMicros,
+  });
+
+  /// 라이브러리 전체 자산수(신규/삭제 감지).
+  final int total;
+
+  /// 처리(배정 완료)된 자산수(commit 감지).
+  final int processedCount;
+
+  /// 마지막 처리 시각(µs). 같은 id 재기록 등 count 불변 변화까지 감지.
+  final int? lastProcessedMicros;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ScanSignature &&
+      other.total == total &&
+      other.processedCount == processedCount &&
+      other.lastProcessedMicros == lastProcessedMicros;
+
+  @override
+  int get hashCode => Object.hash(total, processedCount, lastProcessedMicros);
+}
+
+/// 미분류 큐 스캔 결과 + 그 시점의 [_ScanSignature].
+@immutable
+class _QueueScanCache {
+  const _QueueScanCache(this.signature, this.queue);
+  final _ScanSignature signature;
+  final List<AssetRef> queue;
+}
+
+/// 네이티브 배치 이동 채널(`moveToAlbums`) 응답의 파싱 결과(C-5/C-4).
+///
+/// - [unsupported]: API<30 → 호출측이 레거시 경로로 폴백.
+/// - [cancelled]  : 사용자가 단일 쓰기 동의창을 취소 → 예약 유지, failed 0.
+/// - [moved]      : RELATIVE_PATH 갱신에 성공한 assetId(이동 후 최종 id 해석 대상).
+/// - [failed]     : 갱신 실패 assetId(큐 유지).
+@immutable
+@visibleForTesting
+class MoveChannelResult {
+  const MoveChannelResult({
+    required this.unsupported,
+    required this.cancelled,
+    required this.moved,
+    required this.failed,
+  });
+
+  final bool unsupported;
+  final bool cancelled;
+  final List<String> moved;
+  final List<String> failed;
+}
+
+/// 채널 응답(Map) → [MoveChannelResult]. 알 수 없는 응답은 "아무것도 이동 안 됨"으로
+/// 안전 해석(succeeded 0, cancelled/unsupported false → 호출측이 전량 failed 처리).
+/// 플랫폼 채널 없이 단위 테스트 가능하도록 순수 함수로 둔다.
+@visibleForTesting
+MoveChannelResult parseMoveChannelResult(Object? raw) {
+  if (raw is! Map) {
+    return const MoveChannelResult(
+      unsupported: false,
+      cancelled: false,
+      moved: <String>[],
+      failed: <String>[],
+    );
+  }
+  List<String> ids(Object? v) =>
+      v is List ? v.map((e) => e.toString()).toList() : const <String>[];
+  return MoveChannelResult(
+    unsupported: raw['unsupported'] == true,
+    cancelled: raw['cancelled'] == true,
+    moved: ids(raw['moved']),
+    failed: ids(raw['failed']),
+  );
 }
 
 /// 이동 전/후 자산을 대조하기 위한 안정 속성 지문(id 재발급 매칭용, FIX-2b).

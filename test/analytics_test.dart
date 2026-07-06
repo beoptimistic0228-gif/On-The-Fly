@@ -174,6 +174,9 @@ class FakeProcessedRepository implements ProcessedRepository {
   Future<DateTime?> lastProcessedAt() async => null;
 
   @override
+  Future<int> processedCount() async => 0;
+
+  @override
   Future<void> markProcessed({
     required String assetId,
     required String albumId,
