@@ -392,9 +392,15 @@ class _SortReady extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
-                    onPressed: state.pendingCount > 0 ? onCommit : null,
+                    // 삭제는 즉시 실행이라 pending 에 안 잡히지만, 삭제만 한
+                    // 세션도 완료 화면(축하·세션 이벤트)으로 나가야 한다(D5).
+                    onPressed: state.pendingCount > 0 || state.deletedCount > 0
+                        ? onCommit
+                        : null,
                     icon: const Icon(Icons.check_rounded),
-                    label: Text('정리 (${state.pendingCount})'),
+                    label: Text(state.pendingCount > 0
+                        ? '정리 (${state.pendingCount})'
+                        : '마치기'),
                   ),
                 ],
               ),
