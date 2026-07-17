@@ -84,8 +84,10 @@ class _CompletionAdSlotState extends ConsumerState<CompletionAdSlot> {
         children: [
           Text(
             '광고',
+            // 광고 고지 라벨 — outline(테두리용, 대비 낮음) 대신 onSurfaceVariant 로
+            // 본문 대비(4.5:1) 확보. 법적 고지라 가독성이 중요하다.
             style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.outline),
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 4),
           SizedBox(

@@ -310,9 +310,11 @@ class _SortReady extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               // 최근 앨범 퀵버튼 — 탭 1회 배정(원칙 2).
+              // 높이 48 = 최소 터치 타겟(44+) 확보(§터치, ActionChip 탭 영역이
+              // 상위 SizedBox 로 클램프되지 않게).
               if (recent.isNotEmpty)
                 SizedBox(
-                  height: 40,
+                  height: 48,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
@@ -453,28 +455,36 @@ class _RoundAction extends StatelessWidget {
         : subdued
             ? 22.0
             : 26.0;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Material(
-          color: bg,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            child: Padding(
-              padding: EdgeInsets.all(pad),
-              child: Icon(icon, color: fg, size: iconSize),
+    // 아이콘 버튼 + 하단 라벨을 한 시맨틱 노드로 합쳐, 스크린리더가 아이콘만 있는
+    // 탭 영역을 "라벨 없는 버튼"으로 읽지 않고 "삭제/나중에/… 버튼"으로 읽게 한다.
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Material(
+              color: bg,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onTap,
+                child: Padding(
+                  padding: EdgeInsets.all(pad),
+                  child: Icon(icon, color: fg, size: iconSize),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(height: 6),
+            Text(label,
+                style: TextStyle(
+                    color: effective,
+                    fontSize: subdued ? 11 : 12,
+                    fontWeight: FontWeight.w600)),
+          ],
         ),
-        const SizedBox(height: 6),
-        Text(label,
-            style: TextStyle(
-                color: effective,
-                fontSize: subdued ? 11 : 12,
-                fontWeight: FontWeight.w600)),
-      ],
+      ),
     );
   }
 }

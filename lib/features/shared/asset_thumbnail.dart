@@ -74,19 +74,25 @@ class AssetThumbnail extends ConsumerWidget {
             child: Icon(Icons.image_not_supported_outlined, color: scheme.outline),
           );
         }
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.memory(bytes, fit: fit, gaplessPlayback: true),
-            if (showVideoBadge && mediaType == 1)
-              const Center(
-                child: Icon(
-                  Icons.play_circle_fill,
-                  size: 56,
-                  color: Colors.white,
+        // 스크린리더에 "사진/영상 썸네일"임을 알린다(이미지엔 대체 텍스트가 없으면
+        // 무의미한 노드가 된다). 재생 아이콘은 장식이라 시맨틱에서 제외한다.
+        return Semantics(
+          image: true,
+          label: mediaType == 1 ? '영상 썸네일' : '사진 썸네일',
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.memory(bytes, fit: fit, gaplessPlayback: true),
+              if (showVideoBadge && mediaType == 1)
+                const Center(
+                  child: Icon(
+                    Icons.play_circle_fill,
+                    size: 56,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     );
