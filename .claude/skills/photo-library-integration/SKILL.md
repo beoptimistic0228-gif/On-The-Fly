@@ -1,6 +1,6 @@
 ---
 name: photo-library-integration
-description: 그때그때의 핵심·최고위험 연동을 구현할 때 사용. Flutter photo_manager로 iOS PhotoKit/Android MediaStore 사진 접근, 권한 흐름, "처리한 자산 ID" 중복방지 로컬 DB, 앨범 태깅(iOS)/폴더 이동(Android), 로컬 알림을 다룬다. platform-integrator 에이전트 전용.
+description: 그때그때의 핵심·최고위험 연동을 구현할 때 사용. Flutter photo_manager로 iOS PhotoKit/Android MediaStore 사진 접근, 권한 흐름, "처리한 자산 ID" 중복방지 로컬 DB, 앨범 태깅(iOS)/폴더 이동(Android), 단건 삭제(D5), 로컬 알림을 다룬다. platform-integrator 에이전트 전용.
 ---
 
 # photo-library-integration — 사진 라이브러리 연동
@@ -40,15 +40,25 @@ description: 그때그때의 핵심·최고위험 연동을 구현할 때 사용
 - `flutter_local_notifications` + `timezone`으로 매일 사용자 지정 시각 스케줄(`zonedSchedule`, `matchDateTimeComponents: time`).
 - iOS/Android 알림 권한 별도 요청. 앱 재시작·재부팅 후 스케줄 유지 확인.
 
+## 6. 단건 삭제 (D5, F-14a')
+정본은 `_workspace/06_architect_delete.md` §0(아래 §1~§8과 상충하면 §0 우선). 단건만, 일괄 삭제·중복정리는 금지.
+- **즉시 실행.** stage/commit 배치에 섞지 않는다. Android API30+ `deleteWithIds` → `createDeleteRequest`(영구 삭제), iOS `deleteWithIds` → "최근 삭제됨" 30일(플랫폼 비대칭 감수).
+- **OS 동의창 없이는 삭제 금지.** API<30은 동의창 없이 직삭제되므로 `supportsDeletion=false`, 서비스도 즉시 false 반환(UI 미노출과 이중 방어).
+- 반환 false = 취소 또는 실패(플랫폼상 구분 불가).
+- **ProcessedAsset 미기록.** 대신 `DeletionLogs(id, deletedAt)`에 1행(자산 id 비저장, 프라이버시). streak는 처리일 ∪ 삭제일.
+- 성공 시 내부 큐 캐시에서 해당 자산 즉시 제거, pending 배정에 있으면 제거.
+
 ## 출력 계약 (feature-builder가 의존)
 서비스 공개 인터페이스를 `_workspace/02_integrator_notes.md`에 명시:
 - `Future<PermissionState> ensurePermission()`
 - `Future<List<AssetEntity>> loadUnsorted({int page})`
 - `Future<void> assign(AssetEntity asset, Album album)` (기록까지 원자적)
 - `Future<Album> createAlbum(String name)`
+- `Future<bool> deleteAsset(AssetRef asset)` / `bool get supportsDeletion` (D5)
 - 반환 shape·null 규칙·에러 타입을 QA가 대조할 수 있게 문서화.
 
 ## 검증 포인트 (QA에 넘길 것)
 - 배정한 자산이 `loadUnsorted` 재호출에서 빠지는가.
 - iOS에서 원본이 타임라인에 남아도 미분류 목록에 다시 안 뜨는가.
 - 권한 거부/제한 상태에서 크래시 없이 안내로 이어지는가.
+- 삭제 불변식 DEL-1'~8(`06_architect_delete.md` §0.4).

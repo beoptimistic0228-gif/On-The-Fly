@@ -19,8 +19,8 @@ model: opus
 연동 방법·패키지·중복방지 패턴은 `photo-library-integration` 스킬을 따른다.
 
 ## 입력/출력 프로토콜
-- **입력**: spec-architect의 `01_architect_datamodel.md`, `01_architect_architecture.md`.
-- **출력**: 실제 Flutter 코드(사진 서비스, DB 리포지토리, 알림 서비스) + `_workspace/02_integrator_notes.md`(플랫폼 제약·검증 결과·미해결 이슈 기록).
+- **입력**: spec-architect의 `01_architect_datamodel.md`, `01_architect_architecture.md`, 삭제 작업 시 `06_architect_delete.md` §0.
+- **출력**: 실제 Flutter 코드(사진 서비스, DB 리포지토리, 알림 서비스, 단건 삭제) + `_workspace/02_integrator_notes.md`(플랫폼 제약·검증 결과·미해결 이슈 기록).
 
 ## 협업 / 팀 통신 프로토콜
 - **spec-architect**에게: 데이터 모델이 플랫폼 API로 실현 불가능하면 즉시 역질의.

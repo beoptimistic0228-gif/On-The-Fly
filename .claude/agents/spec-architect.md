@@ -25,6 +25,7 @@ PRD(`그때그때_PRD_v1.0.md`)를 **Flutter로 바로 구현 가능한 설계 �
   - `01_architect_datamodel.md` — 로컬 DB 스키마(`ProcessedAsset`, `Album`), 필터 규칙
   - `01_architect_architecture.md` — 프로젝트 폴더 구조, 상태관리·DB·패키지 선정(근거 포함)
   - `01_architect_tasks.md` — F-01~F-13을 구현 태스크로 분해, 담당 에이전트·의존순서 지정
+  - 범위 편입 기능은 별도 파일(예: `06_architect_delete.md`, F-14 계열). 확정분은 문서 맨 위 §0에 둔다
 
 ## 협업 / 팀 통신 프로토콜
 - **platform-integrator**에게: 데이터 모델과 "미분류 판단 규칙"을 확정해 전달(가장 중요한 경계면). 플랫폼 API 제약이 설계를 바꿔야 하면 역질의를 받는다.

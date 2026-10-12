@@ -79,3 +79,6 @@
 | 2026-07-02 | 초기 구성 (설계+구현 통합 팀, Flutter) | 전체 | 하네스 신규 구축 |
 | 2026-07-03 | final-auditor 에이전트 추가 (Fable 5) | agents/final-auditor.md | 릴리스 전 PRD 정합성·보안 최종 독립 검증 |
 | 2026-07-03 | no-op 에이전트 감지·폴백 규칙 추가 | skills/geuttaeguttae-build | 서브 에이전트가 도구 0회로 헛도는 사례 2회 발생 → 실제 파일 상태로 검증·재시도·직접수행 |
+| 2026-10-12 | Harness v2 전환(TeamCreate 제거, 이름 있는 Agent+SendMessage), 모델 일괄 opus 지정 제거 | skills/geuttaeguttae-build, agents/qa-verifier | v1 도구가 없어 Phase 1·2 실행 불가, final-auditor fable 지정이 덮어써짐 |
+| 2026-10-12 | Phase 4 최종 감사 추가(구현마다 자동, 보류 시 수정 루프 1회), Phase 0에 "검증만" 분기 | skills/geuttaeguttae-build, agents/final-auditor | final-auditor가 오케스트레이터에 연결되지 않았음, 출시 전 재판정 경로 부재 |
+| 2026-10-12 | D5 단건 삭제(F-14a'~d') 반영 | 스킬 4종, agents 5종 | 07-06 범위 편입이 하네스에 미반영 |

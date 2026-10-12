@@ -20,7 +20,7 @@ model: opus
 - 광고·IAP·분석: `monetization-and-analytics`
 
 ## 입력/출력 프로토콜
-- **입력**: spec-architect의 `01_architect_screens.md`, platform-integrator가 공개한 서비스 인터페이스.
+- **입력**: spec-architect의 `01_architect_screens.md`, platform-integrator가 공개한 서비스 인터페이스, 삭제 UI 작업 시 `06_architect_delete.md` §0.2.
 - **출력**: Flutter 화면·위젯·상태 코드 + `_workspace/02_builder_notes.md`.
 
 ## 협업 / 팀 통신 프로토콜
