@@ -6,6 +6,7 @@
 ## 현재 상태 (중요 — 2026-07-15 갱신)
 - **Flutter 앱 구현 완료 단계, 출시 전 검증 문턱.** 핵심 루프(F-01~F-07) end-to-end 동작 + 부가(F-08~F-13: 광고·IAP·Analytics 실연동) + D5 단건 삭제(F-14a'~d') 전부 커밋됨. `flutter analyze` 클린, `flutter test` 77/77, Android 실기기(S22 Ultra) 스모크 PASS(D5 포함, ~2026-07-07).
 - **출시 잔여**: ① iOS 실기기 검증 0회(**Mac 부재 = 최대 블로커** — FIX-2a, "최근 삭제됨" 경유 등 `_workspace/03_qa_report.md` §8.6·§8.8) ② Android API<30 기기에서 삭제 버튼 미노출 육안 확인(기기 부재) ③ 릴리스 판정 — `_workspace/04_final_audit.md`상 "보류"였고 사유 ①②는 후속 커밋으로 해소됐으나 **재판정 기록 없음**(iOS 한정 사유 ③은 존속).
+- **하네스 v2 전환(2026-10-12, `demo/harness-v2-audit` 브랜치, main 미병합, 실행 테스트 미실시).** 다음 첫 행동: "릴리스 재판정해줘"로 Phase 0 "검증만" 분기를 실측해 ③ 재판정 기록을 채운다.
 - 작업 이력·QA·결정은 `_workspace/00_decisions.md` ~ `06_architect_delete.md` 참조. 저순위 미완: I-2 앨범 커버 플레이스홀더, C-3 영상 인라인 재생 다운그레이드(둘 다 비차단).
 
 ## 프로젝트 개요
